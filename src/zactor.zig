@@ -1,0 +1,137 @@
+const std = @import("std");
+const testing = std.testing;
+const Allocator = std.mem.Allocator;
+const Thread = std.Thread;
+const Mutex = std.Thread.Mutex;
+const Condition = std.Thread.Condition;
+
+// Re-export main components
+pub const Actor = @import("actor.zig").Actor;
+pub const ActorContext = @import("actor.zig").ActorContext;
+pub const ActorSystem = @import("actor_system.zig").ActorSystem;
+pub const Message = @import("message.zig").Message;
+pub const SystemMessage = @import("message.zig").SystemMessage;
+pub const ControlMessage = @import("message.zig").ControlMessage;
+pub const Mailbox = @import("mailbox.zig").Mailbox;
+pub const ActorRef = @import("actor_ref.zig").ActorRef;
+pub const Scheduler = @import("scheduler.zig").Scheduler;
+
+// Core types
+pub const ActorId = u64;
+pub const MessageId = u64;
+
+pub const ActorError = error{
+    ActorNotFound,
+    MailboxFull,
+    SystemShutdown,
+    InvalidMessage,
+    OutOfMemory,
+};
+
+pub const ActorState = enum(u8) {
+    created = 0,
+    running = 1,
+    suspended = 2,
+    stopped = 3,
+    failed = 4,
+};
+
+// Test to ensure the module compiles
+test "zactor module compilation" {
+    // This test ensures the module structure is correct
+    const allocator = testing.allocator;
+    _ = allocator;
+
+    // Basic type checks
+    const actor_id: ActorId = 1;
+    const message_id: MessageId = 1;
+    _ = actor_id;
+    _ = message_id;
+
+    const state = ActorState.created;
+    try testing.expect(state == ActorState.created);
+}
+
+// Performance configuration
+pub const Config = struct {
+    max_actors: u32 = 10000,
+    mailbox_capacity: u32 = 1000,
+    scheduler_threads: u32 = 0, // 0 = auto-detect
+    enable_work_stealing: bool = true,
+    enable_numa_awareness: bool = false,
+    message_pool_size: u32 = 10000,
+};
+
+// Global configuration instance
+pub var config: Config = Config{};
+
+// Initialize ZActor with custom configuration
+pub fn init(cfg: Config) void {
+    config = cfg;
+}
+
+// Utility functions for performance measurement
+pub const Metrics = struct {
+    messages_sent: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    messages_received: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    actors_created: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    actors_destroyed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+
+    pub fn incrementMessagesSent(self: *Metrics) void {
+        _ = self.messages_sent.fetchAdd(1, .monotonic);
+    }
+
+    pub fn incrementMessagesReceived(self: *Metrics) void {
+        _ = self.messages_received.fetchAdd(1, .monotonic);
+    }
+
+    pub fn incrementActorsCreated(self: *Metrics) void {
+        _ = self.actors_created.fetchAdd(1, .monotonic);
+    }
+
+    pub fn incrementActorsDestroyed(self: *Metrics) void {
+        _ = self.actors_destroyed.fetchAdd(1, .monotonic);
+    }
+
+    pub fn getMessagesSent(self: *const Metrics) u64 {
+        return self.messages_sent.load(.monotonic);
+    }
+
+    pub fn getMessagesReceived(self: *const Metrics) u64 {
+        return self.messages_received.load(.monotonic);
+    }
+
+    pub fn getActorsCreated(self: *const Metrics) u64 {
+        return self.actors_created.load(.monotonic);
+    }
+
+    pub fn getActorsDestroyed(self: *const Metrics) u64 {
+        return self.actors_destroyed.load(.monotonic);
+    }
+
+    pub fn reset(self: *Metrics) void {
+        self.messages_sent.store(0, .monotonic);
+        self.messages_received.store(0, .monotonic);
+        self.actors_created.store(0, .monotonic);
+        self.actors_destroyed.store(0, .monotonic);
+    }
+};
+
+// Global metrics instance
+pub var metrics: Metrics = Metrics{};
+
+test "metrics functionality" {
+    var test_metrics = Metrics{};
+
+    test_metrics.incrementMessagesSent();
+    test_metrics.incrementMessagesReceived();
+    test_metrics.incrementActorsCreated();
+
+    try testing.expect(test_metrics.getMessagesSent() == 1);
+    try testing.expect(test_metrics.getMessagesReceived() == 1);
+    try testing.expect(test_metrics.getActorsCreated() == 1);
+    try testing.expect(test_metrics.getActorsDestroyed() == 0);
+
+    test_metrics.reset();
+    try testing.expect(test_metrics.getMessagesSent() == 0);
+}

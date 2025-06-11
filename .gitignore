@@ -1,0 +1,119 @@
+# Zig build artifacts
+zig-cache/
+.zig-cache/
+zig-out/
+
+# Build outputs
+/build/
+/dist/
+/target/
+
+# Executables
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Downloaded Zig installation
+zig-windows-*.zip
+zig-windows-*/
+zig-linux-*/
+zig-macos-*/
+
+# Test outputs
+test-results/
+coverage/
+
+# Benchmark results
+benchmark-results/
+*.bench
+
+# Documentation build
+docs/
+doc/
+
+# Package manager files (if any)
+node_modules/
+.npm/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Core dumps
+core
+core.*
+
+# Profiling data
+*.prof
+*.pprof
+
+# Memory dumps
+*.dmp
+
+# Lock files (if using package managers)
+package-lock.json
+yarn.lock
+Cargo.lock
+
+# Local configuration
+config.local.*
+settings.local.*
+
+# Build scripts output
+build.log
+install.log
+
+# Performance test data
+perf.data*
+*.perf
+
+# Valgrind output
+*.valgrind
+
+# Address sanitizer output
+*.asan
+
+# Thread sanitizer output
+*.tsan
+
+# Memory sanitizer output
+*.msan
+
+# Undefined behavior sanitizer output
+*.ubsan
