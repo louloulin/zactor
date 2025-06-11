@@ -42,12 +42,22 @@ pub const Message = struct {
     pub const UserData = struct {
         payload: []const u8,
         type_hash: u64,
+        is_string: bool, // Optimization flag for string types
 
         pub fn init(comptime T: type, data: T, allocator: Allocator) !UserData {
             _ = @typeInfo(T);
             const type_hash = std.hash_map.hashString(@typeName(T));
 
-            // Serialize the data
+            // Optimize for string types - avoid JSON serialization
+            if (T == []const u8) {
+                return UserData{
+                    .payload = try allocator.dupe(u8, data),
+                    .type_hash = type_hash,
+                    .is_string = true,
+                };
+            }
+
+            // For other types, use JSON serialization
             var payload = std.ArrayList(u8).init(allocator);
             defer payload.deinit();
 
@@ -56,6 +66,7 @@ pub const Message = struct {
             return UserData{
                 .payload = try allocator.dupe(u8, payload.items),
                 .type_hash = type_hash,
+                .is_string = false,
             };
         }
 
@@ -63,6 +74,19 @@ pub const Message = struct {
             const expected_hash = std.hash_map.hashString(@typeName(T));
             if (self.type_hash != expected_hash) {
                 return error.TypeMismatch;
+            }
+
+            // Fast path for strings - avoid JSON parsing entirely
+            if (T == []const u8 and self.is_string) {
+                // For strings, just return the payload directly
+                // Create a minimal arena for compatibility
+                const arena_ptr = try allocator.create(std.heap.ArenaAllocator);
+                arena_ptr.* = std.heap.ArenaAllocator.init(allocator);
+                const value = try arena_ptr.allocator().dupe(u8, self.payload);
+                return std.json.Parsed(T){
+                    .arena = arena_ptr,
+                    .value = value,
+                };
             }
 
             return try std.json.parseFromSlice(T, allocator, self.payload, .{});

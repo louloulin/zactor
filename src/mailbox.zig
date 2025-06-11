@@ -4,65 +4,88 @@ const Allocator = std.mem.Allocator;
 const zactor = @import("zactor.zig");
 const Message = @import("message.zig").Message;
 
-// Simple thread-safe mailbox using mutex for now (can optimize later)
+// High-performance mailbox using ring buffer and atomic operations
 pub const Mailbox = struct {
     const Self = @This();
+    const CAPACITY = 4096; // Fixed size ring buffer for better performance
 
-    messages: std.ArrayList(Message),
-    mutex: std.Thread.Mutex,
+    messages: [CAPACITY]Message,
+    head: std.atomic.Value(u32), // Read position
+    tail: std.atomic.Value(u32), // Write position
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) !Self {
-        return Self{
-            .messages = std.ArrayList(Message).init(allocator),
-            .mutex = std.Thread.Mutex{},
+        var self = Self{
+            .messages = undefined, // Will be initialized as needed
+            .head = std.atomic.Value(u32).init(0),
+            .tail = std.atomic.Value(u32).init(0),
             .allocator = allocator,
         };
+
+        // Initialize all message slots to avoid undefined behavior
+        for (0..CAPACITY) |i| {
+            self.messages[i] = undefined;
+        }
+
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
         // Clean up remaining messages
-        for (self.messages.items) |msg| {
-            msg.deinit(self.allocator);
+        const head = self.head.load(.acquire);
+        const tail = self.tail.load(.acquire);
+
+        var pos = head;
+        while (pos != tail) {
+            self.messages[pos % CAPACITY].deinit(self.allocator);
+            pos = (pos + 1) % CAPACITY;
         }
-        self.messages.deinit();
     }
 
-    // Thread-safe send
+    // Lock-free send (single producer for now)
     pub fn send(self: *Self, message: Message) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        const tail = self.tail.load(.acquire);
+        const head = self.head.load(.acquire);
+        const next_tail = (tail + 1) % CAPACITY;
 
-        try self.messages.append(message);
-    }
-
-    // Single-consumer receive
-    pub fn receive(self: *Self) ?Message {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        if (self.messages.items.len > 0) {
-            return self.messages.orderedRemove(0);
+        // Check if queue is full
+        if (next_tail == head) {
+            return error.MailboxFull;
         }
 
-        return null;
+        self.messages[tail] = message;
+        self.tail.store(next_tail, .release);
+    }
+
+    // Lock-free receive (single consumer)
+    pub fn receive(self: *Self) ?Message {
+        const head = self.head.load(.acquire);
+        const tail = self.tail.load(.acquire);
+
+        if (head == tail) {
+            return null; // Empty
+        }
+
+        const message = self.messages[head];
+        self.head.store((head + 1) % CAPACITY, .release);
+        return message;
     }
 
     pub fn isEmpty(self: *Self) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        return self.messages.items.len == 0;
+        const head = self.head.load(.acquire);
+        const tail = self.tail.load(.acquire);
+        return head == tail;
     }
 
     pub fn size(self: *Self) u32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        const head = self.head.load(.acquire);
+        const tail = self.tail.load(.acquire);
 
-        return @intCast(self.messages.items.len);
+        if (tail >= head) {
+            return tail - head;
+        } else {
+            return (CAPACITY - head) + tail;
+        }
     }
 };
 

@@ -234,20 +234,13 @@ pub const EventScheduler = struct {
     fn processActor(self: *WorkerContext, actor: *Actor) void {
         _ = self;
 
-        const start_time = std.time.nanoTimestamp();
         var messages_processed: u32 = 0;
-        const max_messages_per_run = 100; // Increased batch size for better throughput
-
-        // Only log for debugging when needed
-        const debug_logging = false; // Set to true for debugging
-        if (debug_logging) {
-            std.log.info("Processing actor {}", .{actor.getId()});
-        }
+        const max_messages_per_run = 1000; // Dramatically increased batch size
 
         // Process messages until mailbox is empty or limit reached
         while (messages_processed < max_messages_per_run) {
-            const processed = actor.processMessage() catch |err| {
-                std.log.err("Actor {} failed to process message: {}", .{ actor.getId(), err });
+            const processed = actor.processMessage() catch {
+                // Minimal error handling - just break on error
                 break;
             };
 
@@ -255,31 +248,11 @@ pub const EventScheduler = struct {
             messages_processed += 1;
         }
 
-        const end_time = std.time.nanoTimestamp();
-        const duration_ns = end_time - start_time;
-
-        // Only log when messages were actually processed and debugging is enabled
-        if (debug_logging and messages_processed > 0) {
-            std.log.info("Actor {} processed {} messages", .{ actor.getId(), messages_processed });
-        }
-
-        // If actor still has messages, reschedule it immediately for better throughput
+        // Reschedule if there are still messages to process
         const actor_state = actor.getState();
-        if (actor_state == .running) {
-            const has_messages = !actor.mailbox.isEmpty();
-            if (has_messages) {
-                actor.context.system.scheduler.schedule(actor) catch |err| {
-                    std.log.err("Failed to reschedule actor {}: {}", .{ actor.getId(), err });
-                };
-            }
-        }
-
-        // Performance monitoring - only warn for significant latency
-        if (messages_processed > 0) {
-            const avg_latency_ns = @divTrunc(duration_ns, @as(i128, messages_processed));
-            if (avg_latency_ns > 5000000) { // > 5ms (increased threshold)
-                std.log.warn("Actor {} high latency: {}ns avg per message ({} msgs)", .{ actor.getId(), avg_latency_ns, messages_processed });
-            }
+        if (actor_state == .running and !actor.mailbox.isEmpty()) {
+            // Always reschedule if there are more messages
+            actor.context.system.scheduler.schedule(actor) catch {};
         }
     }
 };

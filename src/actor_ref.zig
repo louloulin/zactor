@@ -37,27 +37,18 @@ pub const ActorRef = struct {
             return zactor.ActorError.ActorNotFound;
         }
 
+        // Check if mailbox is empty BEFORE sending message
+        const was_empty = self.mailbox.isEmpty();
+
         // Create and send message
         const message = try Message.createUser(T, data, null, allocator);
         try self.mailbox.send(message);
 
-        // Reschedule actor if it's running and we have actor pointer
-        const debug_logging = false; // Set to true for debugging
-        if (debug_logging) {
-            std.log.info("Actor {} send: state={}, actor_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
-        }
-
-        if (current_state == .running and self.actor_ptr != null) {
+        // Only reschedule if actor is running and mailbox was empty before this message
+        if (current_state == .running and self.actor_ptr != null and was_empty) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            if (debug_logging) {
-                std.log.info("Rescheduling actor {} after message send", .{self.id});
-            }
-            self.system_ref.scheduler.schedule(actor) catch |err| {
-                std.log.warn("Failed to reschedule actor {} after message send: {}", .{ self.id, err });
-            };
-        } else if (debug_logging) {
-            std.log.warn("Cannot reschedule actor {}: state={}, has_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
+            self.system_ref.scheduler.schedule(actor) catch {};
         }
 
         // Update metrics
@@ -71,20 +62,17 @@ pub const ActorRef = struct {
             return zactor.ActorError.ActorNotFound;
         }
 
+        // Check if mailbox is empty BEFORE sending message
+        const was_empty = self.mailbox.isEmpty();
+
         const message = Message.createSystem(msg, null);
         try self.mailbox.send(message);
 
-        // Reschedule actor if it's running and we have actor pointer
-        if (current_state == .running and self.actor_ptr != null) {
+        // Only reschedule if mailbox was empty before this message
+        if (current_state == .running and self.actor_ptr != null and was_empty) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            const debug_logging = false; // Set to true for debugging
-            if (debug_logging) {
-                std.log.info("Rescheduling actor {} after system message send", .{self.id});
-            }
-            self.system_ref.scheduler.schedule(actor) catch |err| {
-                std.log.warn("Failed to reschedule actor {} after system message send: {}", .{ self.id, err });
-            };
+            self.system_ref.scheduler.schedule(actor) catch {};
         }
 
         zactor.metrics.incrementMessagesSent();
@@ -97,20 +85,17 @@ pub const ActorRef = struct {
             return zactor.ActorError.ActorNotFound;
         }
 
+        // Check if mailbox is empty BEFORE sending message
+        const was_empty = self.mailbox.isEmpty();
+
         const message = Message.createControl(msg, null);
         try self.mailbox.send(message);
 
-        // Reschedule actor if it's running and we have actor pointer
-        if (current_state == .running and self.actor_ptr != null) {
+        // Only reschedule if mailbox was empty before this message
+        if (current_state == .running and self.actor_ptr != null and was_empty) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            const debug_logging = false; // Set to true for debugging
-            if (debug_logging) {
-                std.log.info("Rescheduling actor {} after control message send", .{self.id});
-            }
-            self.system_ref.scheduler.schedule(actor) catch |err| {
-                std.log.warn("Failed to reschedule actor {} after control message send: {}", .{ self.id, err });
-            };
+            self.system_ref.scheduler.schedule(actor) catch {};
         }
 
         zactor.metrics.incrementMessagesSent();
