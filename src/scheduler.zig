@@ -170,7 +170,7 @@ pub const Scheduler = struct {
             }
         }
 
-        std.log.info("Scheduler stopped");
+        std.log.info("Scheduler stopped", .{});
     }
 
     // Schedule an actor for execution
@@ -220,12 +220,12 @@ pub const Scheduler = struct {
 
             // If no work, try to steal from other workers
             if (actor == null and zactor.config.enable_work_stealing) {
-                actor = worker.tryStealWork();
+                actor = tryStealWork(worker);
             }
 
             if (actor) |a| {
                 // Process messages for this actor
-                worker.processActor(a);
+                processActor(worker, a);
             } else {
                 // No work available, wait for new work
                 worker.work_queue.waitForWork();
@@ -278,7 +278,7 @@ pub const Scheduler = struct {
 
         // Log performance metrics for debugging
         if (messages_processed > 0) {
-            const avg_latency_ns = duration_ns / messages_processed;
+            const avg_latency_ns = @divTrunc(duration_ns, @as(i128, messages_processed));
             if (avg_latency_ns > 1000000) { // > 1ms
                 std.log.warn("Actor {} high latency: {}ns avg per message", .{ actor.getId(), avg_latency_ns });
             }

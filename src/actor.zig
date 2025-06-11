@@ -3,6 +3,8 @@ const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const zactor = @import("zactor.zig");
 const Message = @import("message.zig").Message;
+const SystemMessage = @import("message.zig").SystemMessage;
+const ControlMessage = @import("message.zig").ControlMessage;
 const Mailbox = @import("mailbox.zig").Mailbox;
 const ActorRef = @import("actor_ref.zig").ActorRef;
 
@@ -30,7 +32,7 @@ pub const ActorContext = struct {
     }
 
     // Send a system message
-    pub fn sendSystem(self: *Self, target: ActorRef, msg: Message.SystemMessage) !void {
+    pub fn sendSystem(self: *Self, target: ActorRef, msg: SystemMessage) !void {
         _ = self;
         try target.sendSystem(msg);
     }
@@ -120,13 +122,15 @@ pub const Actor = struct {
         behavior.* = behavior_data;
 
         // Create mailbox
-        var mailbox = try Mailbox.init(allocator);
+        const mailbox = try allocator.create(Mailbox);
+        mailbox.* = try Mailbox.init(allocator);
 
         // Create actor state
-        var state = std.atomic.Value(zactor.ActorState).init(.created);
+        const state = try allocator.create(std.atomic.Value(zactor.ActorState));
+        state.* = std.atomic.Value(zactor.ActorState).init(.created);
 
         // Create actor reference
-        const actor_ref = ActorRef.init(id, &mailbox, &state, system);
+        const actor_ref = ActorRef.init(id, mailbox, state, system);
 
         // Create context
         const context = ActorContext.init(actor_ref, allocator, system);
@@ -173,8 +177,8 @@ pub const Actor = struct {
 
         return Self{
             .id = id,
-            .state = state,
-            .mailbox = mailbox,
+            .state = state.*,
+            .mailbox = mailbox.*,
             .context = context,
             .behavior = behavior,
             .behavior_vtable = vtable,
@@ -185,6 +189,7 @@ pub const Actor = struct {
     pub fn deinit(self: *Self) void {
         self.behavior_vtable.deinit(self.behavior, self.allocator);
         self.mailbox.deinit();
+        // Note: mailbox and state are now owned by the actor struct
     }
 
     // Start the actor
@@ -229,7 +234,7 @@ pub const Actor = struct {
         return false;
     }
 
-    fn handleSystemMessage(self: *Self, msg: Message.SystemMessage) !void {
+    fn handleSystemMessage(self: *Self, msg: SystemMessage) !void {
         switch (msg) {
             .start => try self.start(),
             .stop => try self.stop(),
@@ -248,7 +253,7 @@ pub const Actor = struct {
         }
     }
 
-    fn handleControlMessage(self: *Self, msg: Message.ControlMessage) !void {
+    fn handleControlMessage(self: *Self, msg: ControlMessage) !void {
         switch (msg) {
             .shutdown => try self.stop(),
             .suspend_actor => self.state.store(.suspended, .release),
@@ -292,7 +297,7 @@ pub const EchoActor = struct {
     pub fn receive(self: *Self, message: Message, context: *ActorContext) !void {
         _ = context;
         if (message.isUser()) {
-            std.log.info("EchoActor '{}' received message", .{self.name});
+            std.log.info("EchoActor '{s}' received message", .{self.name});
             // Echo the message back to sender if there is one
             if (message.sender) |sender_id| {
                 // In a real implementation, we'd look up the sender and echo back
@@ -303,22 +308,22 @@ pub const EchoActor = struct {
 
     pub fn preStart(self: *Self, context: *ActorContext) !void {
         _ = context;
-        std.log.info("EchoActor '{}' starting", .{self.name});
+        std.log.info("EchoActor '{s}' starting", .{self.name});
     }
 
     pub fn postStop(self: *Self, context: *ActorContext) !void {
         _ = context;
-        std.log.info("EchoActor '{}' stopping", .{self.name});
+        std.log.info("EchoActor '{s}' stopping", .{self.name});
     }
 
     pub fn preRestart(self: *Self, context: *ActorContext, reason: anyerror) !void {
         _ = context;
-        std.log.info("EchoActor '{}' restarting due to: {}", .{ self.name, reason });
+        std.log.info("EchoActor '{s}' restarting due to: {}", .{ self.name, reason });
     }
 
     pub fn postRestart(self: *Self, context: *ActorContext) !void {
         _ = context;
-        std.log.info("EchoActor '{}' restarted", .{self.name});
+        std.log.info("EchoActor '{s}' restarted", .{self.name});
     }
 };
 

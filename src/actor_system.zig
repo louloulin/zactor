@@ -6,6 +6,7 @@ const Actor = @import("actor.zig").Actor;
 const ActorRef = @import("actor_ref.zig").ActorRef;
 const ActorRefRegistry = @import("actor_ref.zig").ActorRefRegistry;
 const Scheduler = @import("scheduler.zig").Scheduler;
+const SchedulerStats = @import("scheduler.zig").SchedulerStats;
 const Message = @import("message.zig").Message;
 
 // Main ActorSystem that manages the lifecycle of all actors
@@ -49,7 +50,7 @@ pub const ActorSystem = struct {
         }
 
         try self.scheduler.start();
-        std.log.info("ActorSystem '{}' started", .{self.name});
+        std.log.info("ActorSystem '{s}' started", .{self.name});
     }
 
     // Shutdown the actor system gracefully
@@ -58,7 +59,7 @@ pub const ActorSystem = struct {
             return; // Already stopped
         }
 
-        std.log.info("ActorSystem '{}' shutting down...", .{self.name});
+        std.log.info("ActorSystem '{s}' shutting down...", .{self.name});
 
         // Stop all actors
         self.registry.stopAll(self.allocator) catch |err| {
@@ -68,7 +69,7 @@ pub const ActorSystem = struct {
         // Stop scheduler
         self.scheduler.stop();
 
-        std.log.info("ActorSystem '{}' shutdown complete", .{self.name});
+        std.log.info("ActorSystem '{s}' shutdown complete", .{self.name});
     }
 
     // Spawn a new actor
@@ -153,14 +154,14 @@ pub const ActorSystemStats = struct {
     messages_received: u64,
     actors_created: u64,
     actors_destroyed: u64,
-    scheduler_stats: Scheduler.SchedulerStats,
+    scheduler_stats: SchedulerStats,
 
     pub fn deinit(self: ActorSystemStats, allocator: Allocator) void {
         self.scheduler_stats.deinit(allocator);
     }
 
     pub fn print(self: ActorSystemStats) void {
-        std.log.info("=== ActorSystem '{}' Stats ===", .{self.name});
+        std.log.info("=== ActorSystem '{s}' Stats ===", .{self.name});
         std.log.info("Running: {}", .{self.running});
         std.log.info("Total Actors: {}", .{self.total_actors});
         std.log.info("Messages Sent: {}", .{self.messages_sent});
