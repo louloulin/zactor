@@ -90,6 +90,9 @@ pub fn main() !void {
     try system.start();
     std.log.info("Actor system started", .{});
 
+    // Give worker threads time to start and enter wait state
+    std.time.sleep(100 * std.time.ns_per_ms);
+
     // Spawn counter actors
     const counter1 = try system.spawn(CounterActor, CounterActor.init("Counter-1"));
     const counter2 = try system.spawn(CounterActor, CounterActor.init("Counter-2"));

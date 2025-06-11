@@ -33,28 +33,34 @@ pub const EventScheduler = struct {
             defer self.mutex.unlock();
 
             try self.queue.append(actor);
-            std.log.info("ActorQueue: Added actor {} to queue (size: {}), broadcasting to workers", .{ actor.getId(), self.queue.items.len });
-            self.condition.broadcast();
+            std.log.info("ActorQueue: Added actor {} to queue (size: {}), signaling workers", .{ actor.getId(), self.queue.items.len });
+            self.condition.signal();
         }
 
         fn popOrWait(self: *ActorQueue, worker_running: *std.atomic.Value(bool)) ?*Actor {
-            while (worker_running.load(.acquire)) {
-                {
-                    self.mutex.lock();
-                    defer self.mutex.unlock();
+            self.mutex.lock();
+            defer self.mutex.unlock();
 
-                    if (self.queue.items.len > 0) {
-                        const actor = self.queue.pop();
-                        if (actor) |a| {
-                            std.log.info("ActorQueue: Worker got actor {} (remaining queue size: {})", .{ a.getId(), self.queue.items.len });
-                        }
-                        return actor;
-                    }
-                }
-
-                // Sleep briefly to avoid busy waiting
-                std.time.sleep(1 * std.time.ns_per_ms);
+            while (self.queue.items.len == 0 and worker_running.load(.acquire)) {
+                std.log.info("ActorQueue: Worker waiting for work (queue size: {})", .{self.queue.items.len});
+                self.condition.wait(&self.mutex);
+                std.log.info("ActorQueue: Worker woke up (queue size: {})", .{self.queue.items.len});
             }
+
+            // Check if we should stop
+            if (!worker_running.load(.acquire)) {
+                return null;
+            }
+
+            // We have work available
+            if (self.queue.items.len > 0) {
+                const actor = self.queue.pop();
+                if (actor) |a| {
+                    std.log.info("ActorQueue: Worker got actor {} (remaining queue size: {})", .{ a.getId(), self.queue.items.len });
+                }
+                return actor;
+            }
+
             return null;
         }
 
@@ -94,23 +100,20 @@ pub const EventScheduler = struct {
         else
             num_threads;
 
-        const workers = try allocator.alloc(WorkerContext, actual_threads);
-        for (workers, 0..) |*worker, i| {
-            worker.* = WorkerContext.init(@intCast(i), undefined);
-        }
-
         var scheduler = Self{
             .allocator = allocator,
-            .workers = workers,
+            .workers = undefined,
             .num_threads = actual_threads,
             .running = std.atomic.Value(bool).init(false),
             .actor_queue = ActorQueue.init(allocator),
         };
 
-        // Set scheduler reference in workers
-        for (workers) |*worker| {
-            worker.scheduler = &scheduler;
+        const workers = try allocator.alloc(WorkerContext, actual_threads);
+        for (workers, 0..) |*worker, i| {
+            worker.* = WorkerContext.init(@intCast(i), &scheduler);
         }
+
+        scheduler.workers = workers;
 
         return scheduler;
     }
