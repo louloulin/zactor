@@ -12,6 +12,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Create a module for zactor
+    const zactor_module = b.addModule("zactor", .{
+        .root_source_file = b.path("src/zactor.zig"),
+    });
+
     b.installArtifact(zactor);
 
     // Tests
@@ -24,4 +29,75 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    // Supervisor tests
+    const supervisor_tests = b.addTest(.{
+        .root_source_file = b.path("tests/supervisor_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    supervisor_tests.root_module.addImport("zactor", zactor_module);
+
+    const run_supervisor_tests = b.addRunArtifact(supervisor_tests);
+    const supervisor_test_step = b.step("test-supervisor", "Run supervisor tests");
+    supervisor_test_step.dependOn(&run_supervisor_tests.step);
+
+    // Examples
+    const basic_example = b.addExecutable(.{
+        .name = "basic_example",
+        .root_source_file = b.path("examples/basic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    basic_example.root_module.addImport("zactor", zactor_module);
+
+    const ping_pong_example = b.addExecutable(.{
+        .name = "ping_pong_example",
+        .root_source_file = b.path("examples/ping_pong.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ping_pong_example.root_module.addImport("zactor", zactor_module);
+
+    const supervisor_example = b.addExecutable(.{
+        .name = "supervisor_example",
+        .root_source_file = b.path("examples/supervisor_example.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    supervisor_example.root_module.addImport("zactor", zactor_module);
+
+    // Install examples
+    b.installArtifact(basic_example);
+    b.installArtifact(ping_pong_example);
+    b.installArtifact(supervisor_example);
+
+    // Run steps for examples
+    const run_basic = b.addRunArtifact(basic_example);
+    const run_ping_pong = b.addRunArtifact(ping_pong_example);
+    const run_supervisor = b.addRunArtifact(supervisor_example);
+
+    const basic_step = b.step("run-basic", "Run basic example");
+    basic_step.dependOn(&run_basic.step);
+
+    const ping_pong_step = b.step("run-ping-pong", "Run ping-pong example");
+    ping_pong_step.dependOn(&run_ping_pong.step);
+
+    const supervisor_step = b.step("run-supervisor", "Run supervisor example");
+    supervisor_step.dependOn(&run_supervisor.step);
+
+    // Benchmarks
+    const benchmark = b.addExecutable(.{
+        .name = "benchmark",
+        .root_source_file = b.path("benchmarks/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    benchmark.root_module.addImport("zactor", zactor_module);
+
+    b.installArtifact(benchmark);
+
+    const run_benchmark = b.addRunArtifact(benchmark);
+    const benchmark_step = b.step("benchmark", "Run performance benchmarks");
+    benchmark_step.dependOn(&run_benchmark.step);
 }

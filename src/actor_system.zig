@@ -8,6 +8,8 @@ const ActorRefRegistry = @import("actor_ref.zig").ActorRefRegistry;
 const EventScheduler = @import("event_scheduler.zig").EventScheduler;
 const SchedulerStats = @import("event_scheduler.zig").SchedulerStats;
 const Message = @import("message.zig").Message;
+const Supervisor = @import("supervisor.zig").Supervisor;
+const SupervisorConfig = @import("supervisor.zig").SupervisorConfig;
 
 // Main ActorSystem that manages the lifecycle of all actors
 pub const ActorSystem = struct {
@@ -17,6 +19,7 @@ pub const ActorSystem = struct {
     allocator: Allocator,
     scheduler: EventScheduler,
     registry: ActorRefRegistry,
+    supervisor: Supervisor,
     next_actor_id: std.atomic.Value(u64),
     running: std.atomic.Value(bool),
 
@@ -31,6 +34,7 @@ pub const ActorSystem = struct {
             .allocator = allocator,
             .scheduler = try EventScheduler.init(allocator, num_threads),
             .registry = ActorRefRegistry.init(allocator),
+            .supervisor = Supervisor.init(allocator, .{}),
             .next_actor_id = std.atomic.Value(u64).init(1),
             .running = std.atomic.Value(bool).init(false),
         };
@@ -40,6 +44,7 @@ pub const ActorSystem = struct {
         self.shutdown();
         self.scheduler.deinit();
         self.registry.deinit();
+        self.supervisor.deinit();
         self.allocator.free(self.name);
     }
 
@@ -90,6 +95,9 @@ pub const ActorSystem = struct {
         // Register the actor
         try self.registry.register(actor_ref);
 
+        // Add to supervision
+        try self.supervisor.addChild(actor_ref);
+
         // Start the actor
         try actor.start();
 
@@ -125,6 +133,28 @@ pub const ActorSystem = struct {
             .actors_destroyed = zactor.metrics.getActorsDestroyed(),
             .scheduler_stats = scheduler_stats,
         };
+    }
+
+    // Handle actor failure (called by actors when they fail)
+    pub fn handleActorFailure(self: *Self, actor_id: zactor.ActorId, error_info: anyerror) !void {
+        std.log.warn("ActorSystem: Actor {} failed with error: {}", .{ actor_id, error_info });
+
+        // Delegate to supervisor
+        try self.supervisor.handleFailure(actor_id, error_info);
+
+        // Update metrics
+        zactor.metrics.incrementActorFailures();
+    }
+
+    // Configure supervision strategy
+    pub fn setSupervisorConfig(self: *Self, config: SupervisorConfig) void {
+        self.supervisor.config = config;
+        std.log.info("ActorSystem: Updated supervisor configuration", .{});
+    }
+
+    // Get supervisor statistics
+    pub fn getSupervisorStats(self: *Self) @import("supervisor.zig").SupervisorStats {
+        return self.supervisor.getStats();
     }
 
     // Wait for the system to process all pending messages

@@ -15,6 +15,8 @@ pub const ControlMessage = @import("message.zig").ControlMessage;
 pub const Mailbox = @import("mailbox.zig").Mailbox;
 pub const ActorRef = @import("actor_ref.zig").ActorRef;
 pub const Scheduler = @import("scheduler.zig").Scheduler;
+pub const Supervisor = @import("supervisor.zig").Supervisor;
+pub const SupervisorStrategy = @import("supervisor.zig").SupervisorStrategy;
 
 // Core types
 pub const ActorId = u64;
@@ -26,6 +28,8 @@ pub const ActorError = error{
     SystemShutdown,
     InvalidMessage,
     OutOfMemory,
+    ActorFailed,
+    SupervisorError,
 };
 
 pub const ActorState = enum(u8) {
@@ -76,6 +80,7 @@ pub const Metrics = struct {
     messages_received: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
     actors_created: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
     actors_destroyed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    actor_failures: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
 
     pub fn incrementMessagesSent(self: *Metrics) void {
         _ = self.messages_sent.fetchAdd(1, .monotonic);
@@ -91,6 +96,10 @@ pub const Metrics = struct {
 
     pub fn incrementActorsDestroyed(self: *Metrics) void {
         _ = self.actors_destroyed.fetchAdd(1, .monotonic);
+    }
+
+    pub fn incrementActorFailures(self: *Metrics) void {
+        _ = self.actor_failures.fetchAdd(1, .monotonic);
     }
 
     pub fn getMessagesSent(self: *const Metrics) u64 {
@@ -109,11 +118,25 @@ pub const Metrics = struct {
         return self.actors_destroyed.load(.monotonic);
     }
 
+    pub fn getActorFailures(self: *const Metrics) u64 {
+        return self.actor_failures.load(.monotonic);
+    }
+
     pub fn reset(self: *Metrics) void {
         self.messages_sent.store(0, .monotonic);
         self.messages_received.store(0, .monotonic);
         self.actors_created.store(0, .monotonic);
         self.actors_destroyed.store(0, .monotonic);
+        self.actor_failures.store(0, .monotonic);
+    }
+
+    pub fn print(self: *const Metrics) void {
+        std.log.info("ZActor Metrics:", .{});
+        std.log.info("  Messages Sent: {}", .{self.getMessagesSent()});
+        std.log.info("  Messages Received: {}", .{self.getMessagesReceived()});
+        std.log.info("  Actors Created: {}", .{self.getActorsCreated()});
+        std.log.info("  Actors Destroyed: {}", .{self.getActorsDestroyed()});
+        std.log.info("  Actor Failures: {}", .{self.getActorFailures()});
     }
 };
 

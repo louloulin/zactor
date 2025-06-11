@@ -59,14 +59,13 @@ pub const Message = struct {
             };
         }
 
-        pub fn get(self: UserData, comptime T: type, allocator: Allocator) !T {
+        pub fn get(self: UserData, comptime T: type, allocator: Allocator) !std.json.Parsed(T) {
             const expected_hash = std.hash_map.hashString(@typeName(T));
             if (self.type_hash != expected_hash) {
                 return error.TypeMismatch;
             }
 
-            var stream = std.json.TokenStream.init(self.payload);
-            return try std.json.parse(T, &stream, .{ .allocator = allocator });
+            return try std.json.parseFromSlice(T, allocator, self.payload, .{});
         }
 
         pub fn deinit(self: UserData, allocator: Allocator) void {
@@ -207,9 +206,9 @@ test "message creation and serialization" {
     try testing.expect(!msg.isSystem());
 
     // Test retrieving data
-    const retrieved = try msg.data.user.get([]const u8, allocator);
-    defer allocator.free(retrieved);
-    try testing.expectEqualStrings(test_data, retrieved);
+    const parsed = try msg.data.user.get([]const u8, allocator);
+    defer parsed.deinit();
+    try testing.expectEqualStrings(test_data, parsed.value);
 }
 
 test "system message creation" {
