@@ -15,29 +15,26 @@ const BenchmarkActor = struct {
         };
     }
 
-    pub fn receive(self: *Self, message: zactor.Message, context: *zactor.Actor.ActorContext) !void {
+    pub fn receive(self: *Self, message: zactor.Message, context: *zactor.ActorContext) !void {
         _ = context;
         _ = message;
         _ = self.message_count.fetchAdd(1, .monotonic);
     }
 
-    pub fn preStart(self: *Self, context: *zactor.Actor.ActorContext) !void {
-        _ = context;
+    pub fn preStart(_: *Self, _: *zactor.ActorContext) !void {
         // Silent start for benchmarking
     }
 
-    pub fn postStop(self: *Self, context: *zactor.Actor.ActorContext) !void {
-        _ = context;
+    pub fn postStop(_: *Self, _: *zactor.ActorContext) !void {
         // Silent stop for benchmarking
     }
 
-    pub fn preRestart(self: *Self, context: *zactor.Actor.ActorContext, reason: anyerror) !void {
-        _ = context;
-        _ = reason;
+    pub fn preRestart(_: *Self, _: *zactor.ActorContext, _: anyerror) !void {
+        // Silent restart for benchmarking
     }
 
-    pub fn postRestart(self: *Self, context: *zactor.Actor.ActorContext) !void {
-        _ = context;
+    pub fn postRestart(_: *Self, _: *zactor.ActorContext) !void {
+        // Silent restart for benchmarking
     }
 
     pub fn getMessageCount(self: *Self) u64 {
@@ -54,7 +51,7 @@ const BenchmarkConfig = struct {
 };
 
 fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig) !void {
-    std.log.info("=== Throughput Benchmark ===");
+    std.log.info("=== Throughput Benchmark ===", .{});
     std.log.info("Actors: {}, Messages per actor: {}, Threads: {}", .{ config.num_actors, config.messages_per_actor, config.scheduler_threads });
 
     // Initialize ZActor
@@ -75,7 +72,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
     try system.start();
 
     // Spawn benchmark actors
-    var actors = try allocator.alloc(zactor.ActorRef, config.num_actors);
+    const actors = try allocator.alloc(zactor.ActorRef, config.num_actors);
     defer allocator.free(actors);
 
     for (actors, 0..) |*actor_ref, i| {
@@ -103,7 +100,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
     std.log.info("All messages sent in {d:.2} ms", .{@as(f64, @floatFromInt(send_duration_ns)) / 1_000_000.0});
 
     // Wait for all messages to be processed
-    std.log.info("Waiting for message processing...");
+    std.log.info("Waiting for message processing...", .{});
     const total_expected_messages = config.num_actors * config.messages_per_actor;
 
     while (true) {
@@ -125,7 +122,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
     const throughput = @as(f64, @floatFromInt(messages_received)) / duration_seconds;
     const avg_latency_ns = @as(f64, @floatFromInt(total_duration_ns)) / @as(f64, @floatFromInt(messages_received));
 
-    std.log.info("=== Benchmark Results ===");
+    std.log.info("=== Benchmark Results ===", .{});
     std.log.info("Total duration: {d:.3} seconds", .{duration_seconds});
     std.log.info("Messages sent: {}", .{total_messages});
     std.log.info("Messages received: {}", .{messages_received});
@@ -141,7 +138,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
 }
 
 fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
-    std.log.info("=== Latency Benchmark ===");
+    std.log.info("=== Latency Benchmark ===", .{});
 
     zactor.init(.{
         .max_actors = 10,
@@ -160,7 +157,7 @@ fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
     const actor_ref = try system.spawn(BenchmarkActor, BenchmarkActor.init(1));
 
     const num_samples = 1000;
-    var latencies = try allocator.alloc(u64, num_samples);
+    const latencies = try allocator.alloc(u64, num_samples);
     defer allocator.free(latencies);
 
     // Warm up
@@ -213,7 +210,7 @@ fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
 }
 
 fn runScalabilityBenchmark(allocator: std.mem.Allocator) !void {
-    std.log.info("=== Scalability Benchmark ===");
+    std.log.info("=== Scalability Benchmark ===", .{});
 
     const thread_counts = [_]u32{ 1, 2, 4, 8 };
     const num_actors = 100;
@@ -230,19 +227,19 @@ fn runScalabilityBenchmark(allocator: std.mem.Allocator) !void {
         };
 
         try runThroughputBenchmark(allocator, config);
-        std.log.info("---");
+        std.log.info("---", .{});
     }
 }
 
 fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
-    std.log.info("=== Supervision Overhead Benchmark ===");
+    std.log.info("=== Supervision Overhead Benchmark ===", .{});
 
     const num_actors = 100;
     const messages_per_actor = 500;
 
     // Test without supervision
     {
-        std.log.info("Testing without supervision...");
+        std.log.info("Testing without supervision...", .{});
 
         zactor.init(.{
             .max_actors = num_actors * 2,
@@ -257,7 +254,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         try system.start();
 
-        var actors = try allocator.alloc(zactor.ActorRef, num_actors);
+        const actors = try allocator.alloc(zactor.ActorRef, num_actors);
         defer allocator.free(actors);
 
         // Spawn actors
@@ -286,7 +283,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
         const total_messages = num_actors * messages_per_actor;
         const throughput = @as(f64, @floatFromInt(total_messages)) / (duration_ms / 1000.0);
 
-        std.log.info("Without supervision:");
+        std.log.info("Without supervision:", .{});
         std.log.info("  Duration: {d:.2} ms", .{duration_ms});
         std.log.info("  Throughput: {d:.0} messages/second", .{throughput});
 
@@ -295,7 +292,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
     // Test with supervision
     {
-        std.log.info("Testing with supervision...");
+        std.log.info("Testing with supervision...", .{});
 
         zactor.init(.{
             .max_actors = num_actors * 2,
@@ -317,7 +314,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         try system.start();
 
-        var actors = try allocator.alloc(zactor.ActorRef, num_actors);
+        const actors = try allocator.alloc(zactor.ActorRef, num_actors);
         defer allocator.free(actors);
 
         // Spawn actors (automatically supervised)
@@ -346,7 +343,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
         const total_messages = num_actors * messages_per_actor;
         const throughput = @as(f64, @floatFromInt(total_messages)) / (duration_ms / 1000.0);
 
-        std.log.info("With supervision:");
+        std.log.info("With supervision:", .{});
         std.log.info("  Duration: {d:.2} ms", .{duration_ms});
         std.log.info("  Throughput: {d:.0} messages/second", .{throughput});
 
@@ -362,7 +359,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    std.log.info("=== ZActor Performance Benchmarks ===");
+    std.log.info("=== ZActor Performance Benchmarks ===", .{});
 
     // Run different benchmark types
     try runThroughputBenchmark(allocator, .{
@@ -372,14 +369,14 @@ pub fn main() !void {
         .duration_seconds = 10,
     });
 
-    std.log.info("");
+    std.log.info("", .{});
     try runLatencyBenchmark(allocator);
 
-    std.log.info("");
+    std.log.info("", .{});
     try runScalabilityBenchmark(allocator);
 
-    std.log.info("");
+    std.log.info("", .{});
     try runSupervisionBenchmark(allocator);
 
-    std.log.info("=== All Benchmarks Complete ===");
+    std.log.info("=== All Benchmarks Complete ===", .{});
 }
