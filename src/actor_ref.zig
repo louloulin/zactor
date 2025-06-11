@@ -15,15 +15,17 @@ pub const ActorRef = struct {
     mailbox: *Mailbox,
     state: *std.atomic.Value(zactor.ActorState),
     system_ref: *ActorSystem, // Reference to the actor system
+    actor_ptr: ?*anyopaque, // Pointer to the actual Actor
 
     const ActorSystem = @import("actor_system.zig").ActorSystem;
 
-    pub fn init(id: zactor.ActorId, mailbox: *Mailbox, state: *std.atomic.Value(zactor.ActorState), system: *ActorSystem) Self {
+    pub fn init(id: zactor.ActorId, mailbox: *Mailbox, state: *std.atomic.Value(zactor.ActorState), system: *ActorSystem, actor_ptr: ?*anyopaque) Self {
         return Self{
             .id = id,
             .mailbox = mailbox,
             .state = state,
             .system_ref = system,
+            .actor_ptr = actor_ptr,
         };
     }
 
@@ -38,6 +40,16 @@ pub const ActorRef = struct {
         // Create and send message
         const message = try Message.createUser(T, data, null, allocator);
         try self.mailbox.send(message);
+
+        // Reschedule actor if it's running and we have actor pointer
+        if (current_state == .running and self.actor_ptr != null) {
+            const Actor = @import("actor.zig").Actor;
+            const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
+            std.log.info("Rescheduling actor {} after message send", .{self.id});
+            self.system_ref.scheduler.schedule(actor) catch |err| {
+                std.log.warn("Failed to reschedule actor {} after message send: {}", .{ self.id, err });
+            };
+        }
 
         // Update metrics
         zactor.metrics.incrementMessagesSent();
@@ -103,6 +115,11 @@ pub const ActorRef = struct {
     // Hash function for using ActorRef in hash maps
     pub fn hash(self: Self) u64 {
         return std.hash_map.hashInt(self.id);
+    }
+
+    // Set the actor pointer (used during actor creation)
+    pub fn setActorPtr(self: *Self, actor_ptr: *anyopaque) void {
+        self.actor_ptr = actor_ptr;
     }
 };
 
@@ -215,7 +232,8 @@ test "actor ref basic functionality" {
 
     var state = std.atomic.Value(zactor.ActorState).init(.running);
 
-    const actor_ref = ActorRef.init(123, &mailbox, &state, @ptrCast(&mock_system));
+    const dummy_actor: u32 = 0;
+    const actor_ref = ActorRef.init(123, &mailbox, &state, @ptrCast(&mock_system), @ptrCast(&dummy_actor));
 
     try testing.expect(actor_ref.getId() == 123);
     try testing.expect(actor_ref.isAlive());
@@ -252,8 +270,10 @@ test "actor ref registry" {
     var state1 = std.atomic.Value(zactor.ActorState).init(.running);
     var state2 = std.atomic.Value(zactor.ActorState).init(.running);
 
-    const ref1 = ActorRef.init(1, &mailbox1, &state1, @ptrCast(&mock_system));
-    const ref2 = ActorRef.init(2, &mailbox2, &state2, @ptrCast(&mock_system));
+    const dummy_actor1: u32 = 0;
+    const dummy_actor2: u32 = 0;
+    const ref1 = ActorRef.init(1, &mailbox1, &state1, @ptrCast(&mock_system), @ptrCast(&dummy_actor1));
+    const ref2 = ActorRef.init(2, &mailbox2, &state2, @ptrCast(&mock_system), @ptrCast(&dummy_actor2));
 
     // Register actors
     try registry.register(ref1);

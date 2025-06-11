@@ -129,11 +129,11 @@ pub const Actor = struct {
         const state = try allocator.create(std.atomic.Value(zactor.ActorState));
         state.* = std.atomic.Value(zactor.ActorState).init(.created);
 
-        // Create actor reference
-        const actor_ref = ActorRef.init(id, mailbox, state, system);
+        // Create a temporary actor reference without actor pointer
+        const temp_actor_ref = ActorRef.init(id, mailbox, state, system, null);
 
         // Create context
-        const context = ActorContext.init(actor_ref, allocator, system);
+        const context = ActorContext.init(temp_actor_ref, allocator, system);
 
         // Create vtable
         const vtable = &BehaviorVTable{
@@ -272,7 +272,9 @@ pub const Actor = struct {
     }
 
     pub fn getRef(self: *Self) ActorRef {
-        return self.context.self_ref;
+        var actor_ref = self.context.self_ref;
+        actor_ref.setActorPtr(@ptrCast(self));
+        return actor_ref;
     }
 
     pub fn getState(self: *Self) zactor.ActorState {

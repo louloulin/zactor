@@ -5,8 +5,8 @@ const zactor = @import("zactor.zig");
 const Actor = @import("actor.zig").Actor;
 const ActorRef = @import("actor_ref.zig").ActorRef;
 const ActorRefRegistry = @import("actor_ref.zig").ActorRefRegistry;
-const Scheduler = @import("scheduler.zig").Scheduler;
-const SchedulerStats = @import("scheduler.zig").SchedulerStats;
+const EventScheduler = @import("event_scheduler.zig").EventScheduler;
+const SchedulerStats = @import("event_scheduler.zig").SchedulerStats;
 const Message = @import("message.zig").Message;
 
 // Main ActorSystem that manages the lifecycle of all actors
@@ -15,7 +15,7 @@ pub const ActorSystem = struct {
 
     name: []const u8,
     allocator: Allocator,
-    scheduler: Scheduler,
+    scheduler: EventScheduler,
     registry: ActorRefRegistry,
     next_actor_id: std.atomic.Value(u64),
     running: std.atomic.Value(bool),
@@ -29,7 +29,7 @@ pub const ActorSystem = struct {
         return Self{
             .name = try allocator.dupe(u8, name),
             .allocator = allocator,
-            .scheduler = try Scheduler.init(allocator, num_threads),
+            .scheduler = try EventScheduler.init(allocator, num_threads),
             .registry = ActorRefRegistry.init(allocator),
             .next_actor_id = std.atomic.Value(u64).init(1),
             .running = std.atomic.Value(bool).init(false),
