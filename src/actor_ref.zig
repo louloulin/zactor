@@ -42,15 +42,21 @@ pub const ActorRef = struct {
         try self.mailbox.send(message);
 
         // Reschedule actor if it's running and we have actor pointer
-        std.log.info("Actor {} send: state={}, actor_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
+        const debug_logging = false; // Set to true for debugging
+        if (debug_logging) {
+            std.log.info("Actor {} send: state={}, actor_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
+        }
+
         if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            std.log.info("Rescheduling actor {} after message send", .{self.id});
+            if (debug_logging) {
+                std.log.info("Rescheduling actor {} after message send", .{self.id});
+            }
             self.system_ref.scheduler.schedule(actor) catch |err| {
                 std.log.warn("Failed to reschedule actor {} after message send: {}", .{ self.id, err });
             };
-        } else {
+        } else if (debug_logging) {
             std.log.warn("Cannot reschedule actor {}: state={}, has_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
         }
 
@@ -72,7 +78,10 @@ pub const ActorRef = struct {
         if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            std.log.info("Rescheduling actor {} after system message send", .{self.id});
+            const debug_logging = false; // Set to true for debugging
+            if (debug_logging) {
+                std.log.info("Rescheduling actor {} after system message send", .{self.id});
+            }
             self.system_ref.scheduler.schedule(actor) catch |err| {
                 std.log.warn("Failed to reschedule actor {} after system message send: {}", .{ self.id, err });
             };
@@ -95,7 +104,10 @@ pub const ActorRef = struct {
         if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            std.log.info("Rescheduling actor {} after control message send", .{self.id});
+            const debug_logging = false; // Set to true for debugging
+            if (debug_logging) {
+                std.log.info("Rescheduling actor {} after control message send", .{self.id});
+            }
             self.system_ref.scheduler.schedule(actor) catch |err| {
                 std.log.warn("Failed to reschedule actor {} after control message send: {}", .{ self.id, err });
             };

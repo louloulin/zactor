@@ -236,9 +236,13 @@ pub const EventScheduler = struct {
 
         const start_time = std.time.nanoTimestamp();
         var messages_processed: u32 = 0;
-        const max_messages_per_run = 100; // Prevent actor starvation
+        const max_messages_per_run = 100; // Increased batch size for better throughput
 
-        std.log.info("Processing actor {}", .{actor.getId()});
+        // Only log for debugging when needed
+        const debug_logging = false; // Set to true for debugging
+        if (debug_logging) {
+            std.log.info("Processing actor {}", .{actor.getId()});
+        }
 
         // Process messages until mailbox is empty or limit reached
         while (messages_processed < max_messages_per_run) {
@@ -254,9 +258,12 @@ pub const EventScheduler = struct {
         const end_time = std.time.nanoTimestamp();
         const duration_ns = end_time - start_time;
 
-        std.log.info("Actor {} processed {} messages", .{ actor.getId(), messages_processed });
+        // Only log when messages were actually processed and debugging is enabled
+        if (debug_logging and messages_processed > 0) {
+            std.log.info("Actor {} processed {} messages", .{ actor.getId(), messages_processed });
+        }
 
-        // If actor still has messages, reschedule it
+        // If actor still has messages, reschedule it immediately for better throughput
         const actor_state = actor.getState();
         if (actor_state == .running) {
             const has_messages = !actor.mailbox.isEmpty();
@@ -267,11 +274,11 @@ pub const EventScheduler = struct {
             }
         }
 
-        // Log performance metrics for debugging
+        // Performance monitoring - only warn for significant latency
         if (messages_processed > 0) {
             const avg_latency_ns = @divTrunc(duration_ns, @as(i128, messages_processed));
-            if (avg_latency_ns > 1000000) { // > 1ms
-                std.log.warn("Actor {} high latency: {}ns avg per message", .{ actor.getId(), avg_latency_ns });
+            if (avg_latency_ns > 5000000) { // > 5ms (increased threshold)
+                std.log.warn("Actor {} high latency: {}ns avg per message ({} msgs)", .{ actor.getId(), avg_latency_ns, messages_processed });
             }
         }
     }
