@@ -42,6 +42,7 @@ pub const ActorRef = struct {
         try self.mailbox.send(message);
 
         // Reschedule actor if it's running and we have actor pointer
+        std.log.info("Actor {} send: state={}, actor_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
         if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
@@ -49,6 +50,8 @@ pub const ActorRef = struct {
             self.system_ref.scheduler.schedule(actor) catch |err| {
                 std.log.warn("Failed to reschedule actor {} after message send: {}", .{ self.id, err });
             };
+        } else {
+            std.log.warn("Cannot reschedule actor {}: state={}, has_ptr={}", .{ self.id, current_state, self.actor_ptr != null });
         }
 
         // Update metrics
@@ -65,13 +68,38 @@ pub const ActorRef = struct {
         const message = Message.createSystem(msg, null);
         try self.mailbox.send(message);
 
+        // Reschedule actor if it's running and we have actor pointer
+        if (current_state == .running and self.actor_ptr != null) {
+            const Actor = @import("actor.zig").Actor;
+            const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
+            std.log.info("Rescheduling actor {} after system message send", .{self.id});
+            self.system_ref.scheduler.schedule(actor) catch |err| {
+                std.log.warn("Failed to reschedule actor {} after system message send: {}", .{ self.id, err });
+            };
+        }
+
         zactor.metrics.incrementMessagesSent();
     }
 
     // Send a control message to the actor
     pub fn sendControl(self: Self, msg: ControlMessage) !void {
+        const current_state = self.state.load(.acquire);
+        if (current_state == .stopped or current_state == .failed) {
+            return zactor.ActorError.ActorNotFound;
+        }
+
         const message = Message.createControl(msg, null);
         try self.mailbox.send(message);
+
+        // Reschedule actor if it's running and we have actor pointer
+        if (current_state == .running and self.actor_ptr != null) {
+            const Actor = @import("actor.zig").Actor;
+            const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
+            std.log.info("Rescheduling actor {} after control message send", .{self.id});
+            self.system_ref.scheduler.schedule(actor) catch |err| {
+                std.log.warn("Failed to reschedule actor {} after control message send: {}", .{ self.id, err });
+            };
+        }
 
         zactor.metrics.incrementMessagesSent();
     }

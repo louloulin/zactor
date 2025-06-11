@@ -100,8 +100,8 @@ pub const Actor = struct {
     const Self = @This();
 
     id: zactor.ActorId,
-    state: std.atomic.Value(zactor.ActorState),
-    mailbox: Mailbox,
+    state: *std.atomic.Value(zactor.ActorState),
+    mailbox: *Mailbox,
     context: ActorContext,
     behavior: *anyopaque, // Type-erased actor behavior
     behavior_vtable: *const BehaviorVTable,
@@ -177,8 +177,8 @@ pub const Actor = struct {
 
         return Self{
             .id = id,
-            .state = state.*,
-            .mailbox = mailbox.*,
+            .state = state,
+            .mailbox = mailbox,
             .context = context,
             .behavior = behavior,
             .behavior_vtable = vtable,
@@ -189,7 +189,8 @@ pub const Actor = struct {
     pub fn deinit(self: *Self) void {
         self.behavior_vtable.deinit(self.behavior, self.allocator);
         self.mailbox.deinit();
-        // Note: mailbox and state are now owned by the actor struct
+        self.allocator.destroy(self.mailbox);
+        self.allocator.destroy(self.state);
     }
 
     // Start the actor
