@@ -33,26 +33,29 @@ pub const EventScheduler = struct {
             defer self.mutex.unlock();
 
             try self.queue.append(actor);
-            self.condition.signal();
+            std.log.info("ActorQueue: Added actor {} to queue (size: {}), broadcasting to workers", .{ actor.getId(), self.queue.items.len });
+            self.condition.broadcast();
         }
 
-        fn pop(self: *ActorQueue) ?*Actor {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        fn popOrWait(self: *ActorQueue, worker_running: *std.atomic.Value(bool)) ?*Actor {
+            while (worker_running.load(.acquire)) {
+                {
+                    self.mutex.lock();
+                    defer self.mutex.unlock();
 
-            if (self.queue.items.len > 0) {
-                return self.queue.pop();
+                    if (self.queue.items.len > 0) {
+                        const actor = self.queue.pop();
+                        if (actor) |a| {
+                            std.log.info("ActorQueue: Worker got actor {} (remaining queue size: {})", .{ a.getId(), self.queue.items.len });
+                        }
+                        return actor;
+                    }
+                }
+
+                // Sleep briefly to avoid busy waiting
+                std.time.sleep(1 * std.time.ns_per_ms);
             }
             return null;
-        }
-
-        fn waitForWork(self: *ActorQueue) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            while (self.queue.items.len == 0) {
-                self.condition.wait(&self.mutex);
-            }
         }
 
         fn size(self: *ActorQueue) usize {
@@ -194,15 +197,12 @@ pub const EventScheduler = struct {
         std.log.info("EventWorker {} started", .{worker.id});
 
         while (worker.running.load(.acquire)) {
-            // Try to get work from queue
-            const actor = worker.scheduler.actor_queue.pop();
+            // Get work from queue (blocks until work is available)
+            const actor = worker.scheduler.actor_queue.popOrWait(&worker.running);
 
             if (actor) |a| {
                 // Process messages for this actor
                 processActor(worker, a);
-            } else {
-                // No work available, wait for new work
-                worker.scheduler.actor_queue.waitForWork();
             }
         }
 
