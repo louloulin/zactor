@@ -17,6 +17,7 @@ pub const ActorRef = @import("actor_ref.zig").ActorRef;
 pub const Scheduler = @import("scheduler.zig").Scheduler;
 pub const Supervisor = @import("supervisor.zig").Supervisor;
 pub const SupervisorStrategy = @import("supervisor.zig").SupervisorStrategy;
+pub const SupervisorConfig = @import("supervisor.zig").SupervisorConfig;
 
 // Core types
 pub const ActorId = u64;

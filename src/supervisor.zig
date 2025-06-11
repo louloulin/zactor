@@ -32,7 +32,7 @@ pub const SupervisorConfig = struct {
 };
 
 // Child actor information for supervision
-const ChildInfo = struct {
+pub const ChildInfo = struct {
     actor_ref: ActorRef,
     restart_count: u32,
     last_restart_time: i64,
