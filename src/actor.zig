@@ -187,10 +187,17 @@ pub const Actor = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // Clean up behavior
         self.behavior_vtable.deinit(self.behavior, self.allocator);
+
+        // Clean up mailbox and its messages
         self.mailbox.deinit();
         self.allocator.destroy(self.mailbox);
+
+        // Clean up state
         self.allocator.destroy(self.state);
+
+        std.log.debug("Actor {} resources cleaned up", .{self.id});
     }
 
     // Start the actor

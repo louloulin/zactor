@@ -22,6 +22,9 @@ pub const ActorSystem = struct {
     supervisor: Supervisor,
     next_actor_id: std.atomic.Value(u64),
     running: std.atomic.Value(bool),
+    // Track all created actors for cleanup
+    actors: std.ArrayList(*Actor),
+    actors_mutex: std.Thread.Mutex,
 
     pub fn init(name: []const u8, allocator: Allocator) !Self {
         const num_threads = if (zactor.config.scheduler_threads == 0)
@@ -37,6 +40,8 @@ pub const ActorSystem = struct {
             .supervisor = Supervisor.init(allocator, .{}),
             .next_actor_id = std.atomic.Value(u64).init(1),
             .running = std.atomic.Value(bool).init(false),
+            .actors = std.ArrayList(*Actor).init(allocator),
+            .actors_mutex = std.Thread.Mutex{},
         };
     }
 
@@ -45,6 +50,7 @@ pub const ActorSystem = struct {
         self.scheduler.deinit();
         self.registry.deinit();
         self.supervisor.deinit();
+        self.actors.deinit();
         self.allocator.free(self.name);
     }
 
@@ -71,10 +77,42 @@ pub const ActorSystem = struct {
             std.log.err("Error stopping actors: {}", .{err});
         };
 
+        // Wait for actors to finish processing
+        std.time.sleep(50 * std.time.ns_per_ms);
+
+        // Clean up all actors
+        self.cleanupAllActors();
+
         // Stop scheduler
         self.scheduler.stop();
 
         std.log.info("ActorSystem '{s}' shutdown complete", .{self.name});
+    }
+
+    // Clean up all actors and their resources
+    fn cleanupAllActors(self: *Self) void {
+        self.actors_mutex.lock();
+        defer self.actors_mutex.unlock();
+
+        std.log.info("Cleaning up {} actors...", .{self.actors.items.len});
+
+        for (self.actors.items) |actor| {
+            // Ensure actor is stopped
+            actor.stop() catch |err| {
+                std.log.warn("Error stopping actor {}: {}", .{ actor.getId(), err });
+            };
+
+            // Clean up actor resources
+            actor.deinit();
+
+            // Free the actor itself
+            self.allocator.destroy(actor);
+        }
+
+        // Clear the actors list
+        self.actors.clearAndFree();
+
+        std.log.info("All actors cleaned up", .{});
     }
 
     // Spawn a new actor
@@ -88,6 +126,13 @@ pub const ActorSystem = struct {
         // Create the actor
         const actor = try self.allocator.create(Actor);
         actor.* = try Actor.init(BehaviorType, behavior_data, actor_id, self.allocator, self);
+
+        // Track the actor for cleanup
+        {
+            self.actors_mutex.lock();
+            defer self.actors_mutex.unlock();
+            try self.actors.append(actor);
+        }
 
         // Get actor reference
         const actor_ref = actor.getRef();
