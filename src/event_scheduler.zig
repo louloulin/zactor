@@ -12,14 +12,14 @@ pub const EventScheduler = struct {
     const ActorQueue = struct {
         queue: std.ArrayList(*Actor),
         mutex: std.Thread.Mutex,
-        condition: std.Thread.Condition,
+        semaphore: std.Thread.Semaphore,
         allocator: Allocator,
 
         fn init(allocator: Allocator) ActorQueue {
             return ActorQueue{
                 .queue = std.ArrayList(*Actor).init(allocator),
                 .mutex = std.Thread.Mutex{},
-                .condition = std.Thread.Condition{},
+                .semaphore = std.Thread.Semaphore{},
                 .allocator = allocator,
             };
         }
@@ -33,32 +33,38 @@ pub const EventScheduler = struct {
             defer self.mutex.unlock();
 
             try self.queue.append(actor);
-            std.log.info("ActorQueue: Added actor {} to queue (size: {}), signaling workers", .{ actor.getId(), self.queue.items.len });
-            self.condition.signal();
+            std.log.info("ActorQueue: Added actor {} to queue (size: {}), posting semaphore @{*}", .{ actor.getId(), self.queue.items.len, &self.semaphore });
+            self.semaphore.post();
         }
 
         fn popOrWait(self: *ActorQueue, worker_running: *std.atomic.Value(bool)) ?*Actor {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            while (worker_running.load(.acquire)) {
+                // Wait for work to be available
+                std.log.info("ActorQueue: Worker waiting for semaphore @{*}", .{&self.semaphore});
+                self.semaphore.wait();
+                std.log.info("ActorQueue: Worker got semaphore signal @{*}", .{&self.semaphore});
 
-            while (self.queue.items.len == 0 and worker_running.load(.acquire)) {
-                std.log.info("ActorQueue: Worker waiting for work (queue size: {})", .{self.queue.items.len});
-                self.condition.wait(&self.mutex);
-                std.log.info("ActorQueue: Worker woke up (queue size: {})", .{self.queue.items.len});
-            }
-
-            // Check if we should stop
-            if (!worker_running.load(.acquire)) {
-                return null;
-            }
-
-            // We have work available
-            if (self.queue.items.len > 0) {
-                const actor = self.queue.pop();
-                if (actor) |a| {
-                    std.log.info("ActorQueue: Worker got actor {} (remaining queue size: {})", .{ a.getId(), self.queue.items.len });
+                // Check if we should stop after waking up
+                if (!worker_running.load(.acquire)) {
+                    return null;
                 }
-                return actor;
+
+                // Try to get work from queue
+                {
+                    self.mutex.lock();
+                    defer self.mutex.unlock();
+
+                    if (self.queue.items.len > 0) {
+                        const actor = self.queue.pop();
+                        if (actor) |a| {
+                            std.log.info("ActorQueue: Worker got actor {} (remaining queue size: {})", .{ a.getId(), self.queue.items.len });
+                        }
+                        return actor;
+                    }
+                }
+
+                // No work available (spurious wakeup), continue waiting
+                std.log.info("ActorQueue: No work available after semaphore signal, continuing", .{});
             }
 
             return null;
@@ -109,8 +115,14 @@ pub const EventScheduler = struct {
         };
 
         const workers = try allocator.alloc(WorkerContext, actual_threads);
+        // Initialize workers without scheduler reference first
         for (workers, 0..) |*worker, i| {
-            worker.* = WorkerContext.init(@intCast(i), &scheduler);
+            worker.* = WorkerContext{
+                .id = @intCast(i),
+                .scheduler = undefined, // Will be set later
+                .thread = null,
+                .running = std.atomic.Value(bool).init(false),
+            };
         }
 
         scheduler.workers = workers;
@@ -127,6 +139,11 @@ pub const EventScheduler = struct {
     pub fn start(self: *Self) !void {
         if (self.running.swap(true, .acq_rel)) {
             return; // Already running
+        }
+
+        // Set scheduler reference for all workers
+        for (self.workers) |*worker| {
+            worker.scheduler = self;
         }
 
         // Start worker threads
@@ -148,8 +165,10 @@ pub const EventScheduler = struct {
             worker.running.store(false, .release);
         }
 
-        // Wake up all workers
-        self.actor_queue.condition.broadcast();
+        // Wake up all workers by posting to semaphore
+        for (self.workers) |_| {
+            self.actor_queue.semaphore.post();
+        }
 
         // Wait for all threads to finish
         for (self.workers) |*worker| {
