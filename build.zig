@@ -125,4 +125,18 @@ pub fn build(b: *std.Build) void {
     const run_benchmark = b.addRunArtifact(benchmark);
     const benchmark_step = b.step("benchmark", "Run performance benchmarks");
     benchmark_step.dependOn(&run_benchmark.step);
+
+    // Add debug message flow test
+    const debug_flow = b.addExecutable(.{
+        .name = "debug_message_flow",
+        .root_source_file = b.path("debug_message_flow.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    debug_flow.root_module.addImport("zactor", zactor_module);
+    b.installArtifact(debug_flow);
+
+    const run_debug_flow = b.addRunArtifact(debug_flow);
+    const debug_flow_step = b.step("debug-flow", "Run debug message flow test");
+    debug_flow_step.dependOn(&run_debug_flow.step);
 }

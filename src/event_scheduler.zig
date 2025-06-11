@@ -32,13 +32,6 @@ pub const EventScheduler = struct {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            // Check if actor is already in queue to avoid duplicates
-            for (self.queue.items) |queued_actor| {
-                if (queued_actor.getId() == actor.getId()) {
-                    return; // Actor already queued
-                }
-            }
-
             try self.queue.append(actor);
             self.condition.signal();
         }
