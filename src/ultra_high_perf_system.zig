@@ -152,9 +152,9 @@ pub const UltraHighPerfSystem = struct {
         const actor = self.actor_map.get(actor_id) orelse return false;
 
         if (self.message_pool.acquire()) |msg| {
-            // 消息已经在acquire时设置了sequence=1，现在设置实际的sequence
+            // 使用原子性设置方法，确保类型和payload一致性
             const sequence = self.message_pool.nextSequence();
-            msg.* = FastMessage.createUserString(actor_id, 0, sequence, data);
+            msg.setAsString(actor_id, 0, sequence, data);
 
             const sent = actor.send(msg);
             if (sent) {
@@ -173,8 +173,9 @@ pub const UltraHighPerfSystem = struct {
         const actor = self.actor_map.get(actor_id) orelse return false;
 
         if (self.message_pool.acquire()) |msg| {
+            // 使用原子性设置方法，确保类型和payload一致性
             const sequence = self.message_pool.nextSequence();
-            msg.* = FastMessage.createUserInt(actor_id, 0, sequence, data);
+            msg.setAsInt(actor_id, 0, sequence, data);
 
             const sent = actor.send(msg);
             if (sent) {
@@ -193,8 +194,9 @@ pub const UltraHighPerfSystem = struct {
         const actor = self.actor_map.get(actor_id) orelse return false;
 
         if (self.message_pool.acquire()) |msg| {
+            // 使用原子性设置方法，确保类型和payload一致性
             const sequence = self.message_pool.nextSequence();
-            msg.* = FastMessage.createUserFloat(actor_id, 0, sequence, data);
+            msg.setAsFloat(actor_id, 0, sequence, data);
 
             const sent = actor.send(msg);
             if (sent) {
@@ -213,8 +215,9 @@ pub const UltraHighPerfSystem = struct {
         const actor = self.actor_map.get(actor_id) orelse return false;
 
         if (self.message_pool.acquire()) |msg| {
+            // 使用原子性设置方法，确保类型和payload一致性
             const sequence = self.message_pool.nextSequence();
-            msg.* = FastMessage.createSystemPing(actor_id, 0, sequence);
+            msg.setAsPing(actor_id, 0, sequence);
 
             const sent = actor.send(msg);
             if (sent) {
@@ -241,13 +244,13 @@ pub const UltraHighPerfSystem = struct {
 
                 switch (msg_data.msg_type) {
                     .user_string => {
-                        msg.* = FastMessage.createUserString(actor_id, 0, sequence, msg_data.data.string);
+                        msg.setAsString(actor_id, 0, sequence, msg_data.data.string);
                     },
                     .user_int => {
-                        msg.* = FastMessage.createUserInt(actor_id, 0, sequence, msg_data.data.int_val);
+                        msg.setAsInt(actor_id, 0, sequence, msg_data.data.int_val);
                     },
                     .user_float => {
-                        msg.* = FastMessage.createUserFloat(actor_id, 0, sequence, msg_data.data.float_val);
+                        msg.setAsFloat(actor_id, 0, sequence, msg_data.data.float_val);
                     },
                     else => {
                         self.message_pool.release(msg);

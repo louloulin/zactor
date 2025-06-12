@@ -23,30 +23,39 @@ pub const FastMessage = struct {
     sender_id: u32,
     sequence: u64,
 
-    // Union for different payload types - zero allocation
-    payload: union {
-        string: [32]u8, // Inline string storage
-        int_val: i64,
-        float_val: f64,
-        none: void,
+    // Tagged Union for different payload types - 原子性保证
+    payload: union(Type) {
+        user_string: struct {
+            data: [32]u8,
+            len: u8,
+        },
+        user_int: i64,
+        user_float: f64,
+        system_ping: void,
+        system_pong: void,
+        system_stop: void,
+        control_shutdown: void,
     },
 
-    payload_len: u8, // For string payloads
     _padding: [7]u8 = undefined, // Align to 64 bytes
 
     pub fn createUserString(actor_id: u32, sender_id: u32, sequence: u64, data: []const u8) Self {
-        var msg = Self{
+        const len = @min(data.len, 32);
+        var string_data = [_]u8{0} ** 32;
+
+        // 安全地复制数据
+        if (len > 0) {
+            @memcpy(string_data[0..len], data[0..len]);
+        }
+
+        return Self{
             .msg_type = .user_string,
             .actor_id = actor_id,
             .sender_id = sender_id,
             .sequence = sequence,
-            .payload = .{ .string = undefined },
-            .payload_len = @min(data.len, 32),
+            .payload = .{ .user_string = .{ .data = string_data, .len = @intCast(len) } },
             ._padding = undefined,
         };
-
-        @memcpy(msg.payload.string[0..msg.payload_len], data[0..msg.payload_len]);
-        return msg;
     }
 
     pub fn createUserInt(actor_id: u32, sender_id: u32, sequence: u64, value: i64) Self {
@@ -55,8 +64,7 @@ pub const FastMessage = struct {
             .actor_id = actor_id,
             .sender_id = sender_id,
             .sequence = sequence,
-            .payload = .{ .int_val = value },
-            .payload_len = 0,
+            .payload = .{ .user_int = value },
             ._padding = undefined,
         };
     }
@@ -67,8 +75,7 @@ pub const FastMessage = struct {
             .actor_id = actor_id,
             .sender_id = sender_id,
             .sequence = sequence,
-            .payload = .{ .float_val = value },
-            .payload_len = 0,
+            .payload = .{ .user_float = value },
             ._padding = undefined,
         };
     }
@@ -79,41 +86,102 @@ pub const FastMessage = struct {
             .actor_id = actor_id,
             .sender_id = sender_id,
             .sequence = sequence,
-            .payload = .{ .none = {} },
-            .payload_len = 0,
+            .payload = .{ .system_ping = {} },
+            ._padding = undefined,
+        };
+    }
+
+    // 原子性设置消息为字符串类型
+    pub fn setAsString(self: *Self, actor_id: u32, sender_id: u32, sequence: u64, data: []const u8) void {
+        const len = @min(data.len, 32);
+        var string_data = [_]u8{0} ** 32;
+
+        // 复制数据
+        if (len > 0) {
+            @memcpy(string_data[0..len], data[0..len]);
+        }
+
+        // 原子性设置整个消息
+        self.* = Self{
+            .msg_type = .user_string,
+            .actor_id = actor_id,
+            .sender_id = sender_id,
+            .sequence = sequence,
+            .payload = .{ .user_string = .{ .data = string_data, .len = @intCast(len) } },
+            ._padding = undefined,
+        };
+    }
+
+    // 原子性设置消息为整数类型
+    pub fn setAsInt(self: *Self, actor_id: u32, sender_id: u32, sequence: u64, value: i64) void {
+        // 原子性设置整个消息
+        self.* = Self{
+            .msg_type = .user_int,
+            .actor_id = actor_id,
+            .sender_id = sender_id,
+            .sequence = sequence,
+            .payload = .{ .user_int = value },
+            ._padding = undefined,
+        };
+    }
+
+    // 原子性设置消息为浮点类型
+    pub fn setAsFloat(self: *Self, actor_id: u32, sender_id: u32, sequence: u64, value: f64) void {
+        // 原子性设置整个消息
+        self.* = Self{
+            .msg_type = .user_float,
+            .actor_id = actor_id,
+            .sender_id = sender_id,
+            .sequence = sequence,
+            .payload = .{ .user_float = value },
+            ._padding = undefined,
+        };
+    }
+
+    // 原子性设置消息为Ping类型
+    pub fn setAsPing(self: *Self, actor_id: u32, sender_id: u32, sequence: u64) void {
+        // 原子性设置整个消息
+        self.* = Self{
+            .msg_type = .system_ping,
+            .actor_id = actor_id,
+            .sender_id = sender_id,
+            .sequence = sequence,
+            .payload = .{ .system_ping = {} },
             ._padding = undefined,
         };
     }
 
     pub fn getString(self: *const Self) []const u8 {
-        // 增强类型安全检查
-        if (self.msg_type != .user_string) {
-            std.log.warn("Attempting to get string from non-string message type: {}", .{self.msg_type});
-            return "";
-        }
-        if (self.payload_len > 32) {
-            std.log.warn("String payload length {} exceeds buffer size", .{self.payload_len});
-            return "";
-        }
-        return self.payload.string[0..self.payload_len];
+        // Tagged Union确保类型安全
+        return switch (self.payload) {
+            .user_string => |str_data| str_data.data[0..str_data.len],
+            else => {
+                std.log.warn("Attempting to get string from non-string message type: {}", .{self.msg_type});
+                return "";
+            },
+        };
     }
 
     pub fn getInt(self: *const Self) i64 {
-        // 增强类型安全检查
-        if (self.msg_type != .user_int) {
-            std.log.warn("Attempting to get int from non-int message type: {}", .{self.msg_type});
-            return 0;
-        }
-        return self.payload.int_val;
+        // Tagged Union确保类型安全
+        return switch (self.payload) {
+            .user_int => |int_val| int_val,
+            else => {
+                std.log.warn("Attempting to get int from non-int message type: {}", .{self.msg_type});
+                return 0;
+            },
+        };
     }
 
     pub fn getFloat(self: *const Self) f64 {
-        // 增强类型安全检查
-        if (self.msg_type != .user_float) {
-            std.log.warn("Attempting to get float from non-float message type: {}", .{self.msg_type});
-            return 0.0;
-        }
-        return self.payload.float_val;
+        // Tagged Union确保类型安全
+        return switch (self.payload) {
+            .user_float => |float_val| float_val,
+            else => {
+                std.log.warn("Attempting to get float from non-float message type: {}", .{self.msg_type});
+                return 0.0;
+            },
+        };
     }
 
     // 类型安全检查
@@ -139,11 +207,9 @@ pub const FastMessage = struct {
     // 消息完整性验证
     pub fn validate(self: *const Self) bool {
         // 检查消息类型是否有效
-        const type_valid = switch (self.msg_type) {
-            .user_string => self.payload_len <= 32, // 字符串长度不能超过缓冲区
-            .user_int, .user_float => self.payload_len == 0, // 数值类型不使用payload_len
-            .system_ping, .system_pong, .system_stop => self.payload_len == 0, // 系统消息不使用payload_len
-            .control_shutdown => self.payload_len == 0, // 控制消息不使用payload_len
+        const type_valid = switch (self.payload) {
+            .user_string => |str_data| str_data.len <= 32, // 字符串长度不能超过缓冲区
+            .user_int, .user_float, .system_ping, .system_pong, .system_stop, .control_shutdown => true,
         };
 
         // 检查sequence字段是否表示消息正在使用中
@@ -154,12 +220,16 @@ pub const FastMessage = struct {
 
     // 调试信息
     pub fn debugInfo(self: *const Self) void {
+        const len = switch (self.payload) {
+            .user_string => |str_data| str_data.len,
+            else => 0,
+        };
         std.log.debug("Message: type={}, actor={}, sender={}, seq={}, len={}", .{
             self.msg_type,
             self.actor_id,
             self.sender_id,
             self.sequence,
-            self.payload_len,
+            len,
         });
     }
 };
@@ -187,8 +257,7 @@ pub const MessagePool = struct {
                 .actor_id = 0,
                 .sender_id = 0,
                 .sequence = 0,
-                .payload = .{ .string = [_]u8{0} ** 32 },
-                .payload_len = 0,
+                .payload = .{ .user_string = .{ .data = [_]u8{0} ** 32, .len = 0 } },
                 ._padding = undefined,
             };
 
@@ -211,16 +280,11 @@ pub const MessagePool = struct {
 
     pub fn acquire(self: *Self) ?*FastMessage {
         if (self.free_queue.pop()) |msg| {
-            // 完全重置消息到干净状态，确保没有残留数据
-            msg.* = FastMessage{
-                .msg_type = .user_string,
-                .actor_id = 0,
-                .sender_id = 0,
-                .sequence = 1, // 1表示使用中，0表示空闲
-                .payload = .{ .string = [_]u8{0} ** 32 },
-                .payload_len = 0,
-                ._padding = undefined,
-            };
+            // 不在这里设置具体类型，只标记为使用中
+            // 具体类型将在create方法中原子性设置
+            msg.sequence = 1; // 1表示使用中，0表示空闲
+            msg.actor_id = 0;
+            msg.sender_id = 0;
             return msg;
         }
         return null;
