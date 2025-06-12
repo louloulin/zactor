@@ -61,6 +61,18 @@ pub const FastMessage = struct {
         };
     }
 
+    pub fn createUserFloat(actor_id: u32, sender_id: u32, sequence: u64, value: f64) Self {
+        return Self{
+            .msg_type = .user_float,
+            .actor_id = actor_id,
+            .sender_id = sender_id,
+            .sequence = sequence,
+            .payload = .{ .float_val = value },
+            .payload_len = 0,
+            ._padding = undefined,
+        };
+    }
+
     pub fn createSystemPing(actor_id: u32, sender_id: u32, sequence: u64) Self {
         return Self{
             .msg_type = .system_ping,
@@ -74,17 +86,65 @@ pub const FastMessage = struct {
     }
 
     pub fn getString(self: *const Self) []const u8 {
-        if (self.msg_type == .user_string) {
-            return self.payload.string[0..self.payload_len];
-        }
-        return "";
+        return switch (self.msg_type) {
+            .user_string => self.payload.string[0..self.payload_len],
+            else => "", // 安全地处理非字符串类型
+        };
     }
 
     pub fn getInt(self: *const Self) i64 {
-        if (self.msg_type == .user_int) {
-            return self.payload.int_val;
-        }
-        return 0;
+        return switch (self.msg_type) {
+            .user_int => self.payload.int_val,
+            else => 0, // 安全地处理非整数类型
+        };
+    }
+
+    pub fn getFloat(self: *const Self) f64 {
+        return switch (self.msg_type) {
+            .user_float => self.payload.float_val,
+            else => 0.0, // 安全地处理非浮点类型
+        };
+    }
+
+    // 类型安全检查
+    pub fn isString(self: *const Self) bool {
+        return self.msg_type == .user_string;
+    }
+
+    pub fn isInt(self: *const Self) bool {
+        return self.msg_type == .user_int;
+    }
+
+    pub fn isFloat(self: *const Self) bool {
+        return self.msg_type == .user_float;
+    }
+
+    pub fn isSystem(self: *const Self) bool {
+        return switch (self.msg_type) {
+            .system_ping, .system_pong, .system_stop => true,
+            else => false,
+        };
+    }
+
+    // 消息完整性验证
+    pub fn validate(self: *const Self) bool {
+        return switch (self.msg_type) {
+            .user_string => self.payload_len <= 32, // 字符串长度不能超过缓冲区
+            .user_int, .user_float => self.payload_len == 0, // 数值类型不使用payload_len
+            .system_ping, .system_pong, .system_stop => self.payload_len == 0, // 系统消息不使用payload_len
+            .control_shutdown => self.payload_len == 0, // 控制消息不使用payload_len
+        };
+    }
+
+    // 调试信息
+    pub fn debugInfo(self: *const Self) void {
+        std.log.debug("Message: type={}, actor={}, sender={}, seq={}, len={}", .{
+            self.msg_type,
+            self.actor_id,
+            self.sender_id,
+            self.sequence,
+            self.payload_len,
+        });
     }
 };
 
@@ -103,8 +163,19 @@ pub const MessagePool = struct {
         const messages = try allocator.alloc(FastMessage, POOL_SIZE);
         var free_queue = LockFreeQueue(*FastMessage).init();
 
-        // Add all messages to free queue
+        // 初始化所有消息到有效状态
         for (messages) |*msg| {
+            // 初始化为有效的默认状态
+            msg.* = FastMessage{
+                .msg_type = .user_string,
+                .actor_id = 0,
+                .sender_id = 0,
+                .sequence = 0,
+                .payload = .{ .string = [_]u8{0} ** 32 },
+                .payload_len = 0,
+                ._padding = undefined,
+            };
+
             if (!free_queue.push(msg)) {
                 return error.PoolInitFailed;
             }
@@ -123,17 +194,39 @@ pub const MessagePool = struct {
     }
 
     pub fn acquire(self: *Self) ?*FastMessage {
-        return self.free_queue.pop();
+        if (self.free_queue.pop()) |msg| {
+            // 验证获取的消息是否处于有效状态
+            if (!msg.validate()) {
+                std.log.warn("Acquired invalid message, resetting...", .{});
+                self.resetMessage(msg);
+            }
+            return msg;
+        }
+        return null;
+    }
+
+    // 内部方法：重置消息到安全状态
+    fn resetMessage(self: *Self, msg: *FastMessage) void {
+        _ = self;
+        msg.* = FastMessage{
+            .msg_type = .user_string,
+            .actor_id = 0,
+            .sender_id = 0,
+            .sequence = 0,
+            .payload = .{ .string = [_]u8{0} ** 32 },
+            .payload_len = 0,
+            ._padding = undefined,
+        };
     }
 
     pub fn release(self: *Self, msg: *FastMessage) void {
-        // Reset message for reuse - manually clear fields
-        msg.msg_type = .user_string;
-        msg.actor_id = 0;
-        msg.sender_id = 0;
-        msg.sequence = 0;
-        msg.payload = .{ .none = {} };
-        msg.payload_len = 0;
+        // 验证消息在释放前的状态
+        if (!msg.validate()) {
+            std.log.warn("Releasing invalid message: type={}, len={}", .{ msg.msg_type, msg.payload_len });
+        }
+
+        // 重置消息到安全状态
+        self.resetMessage(msg);
 
         if (!self.free_queue.push(msg)) {
             // This should never happen in a properly sized pool

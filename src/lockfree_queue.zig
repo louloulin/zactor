@@ -11,12 +11,12 @@ pub fn LockFreeQueue(comptime T: type) type {
 
         // Separate cache lines to avoid false sharing
         buffer: [CAPACITY]T align(CACHE_LINE_SIZE),
-        
+
         // Producer cache line
         head: std.atomic.Value(u32) align(CACHE_LINE_SIZE),
         head_cache: u32,
-        
-        // Consumer cache line  
+
+        // Consumer cache line
         tail: std.atomic.Value(u32) align(CACHE_LINE_SIZE),
         tail_cache: u32,
 
@@ -34,7 +34,7 @@ pub fn LockFreeQueue(comptime T: type) type {
         pub fn push(self: *Self, item: T) bool {
             const head = self.head.load(.monotonic);
             const next_head = (head + 1) & (CAPACITY - 1);
-            
+
             // Check if queue is full using cached tail
             if (next_head == self.tail_cache) {
                 // Update cache and check again
@@ -43,7 +43,7 @@ pub fn LockFreeQueue(comptime T: type) type {
                     return false; // Queue is full
                 }
             }
-            
+
             // Store item and update head
             self.buffer[head] = item;
             self.head.store(next_head, .release);
@@ -53,7 +53,7 @@ pub fn LockFreeQueue(comptime T: type) type {
         // Consumer side - optimized for minimal atomic operations
         pub fn pop(self: *Self) ?T {
             const tail = self.tail.load(.monotonic);
-            
+
             // Check if queue is empty using cached head
             if (tail == self.head_cache) {
                 // Update cache and check again
@@ -62,7 +62,7 @@ pub fn LockFreeQueue(comptime T: type) type {
                     return null; // Queue is empty
                 }
             }
-            
+
             // Load item and update tail
             const item = self.buffer[tail];
             const next_tail = (tail + 1) & (CAPACITY - 1);
@@ -100,7 +100,8 @@ pub fn LockFreeQueue(comptime T: type) type {
         pub fn size(self: *Self) u32 {
             const head = self.head.load(.acquire);
             const tail = self.tail.load(.acquire);
-            return (head - tail) & (CAPACITY - 1);
+            // 使用wrapping arithmetic避免溢出
+            return (head -% tail) & (CAPACITY - 1);
         }
 
         pub fn capacity(self: *Self) u32 {
@@ -129,7 +130,7 @@ pub fn MPSCQueue(comptime T: type) type {
                 .data = undefined,
                 .next = std.atomic.Value(?*Node).init(null),
             };
-            
+
             return Self{
                 .head = std.atomic.Value(?*Node).init(dummy),
                 .tail = dummy,
@@ -157,14 +158,14 @@ pub fn MPSCQueue(comptime T: type) type {
         pub fn pop(self: *Self) ?T {
             const tail = self.tail;
             const next = tail.next.load(.acquire);
-            
+
             if (next) |next_node| {
                 const data = next_node.data;
                 self.tail = next_node;
                 self.allocator.destroy(tail);
                 return data;
             }
-            
+
             return null;
         }
     };
@@ -172,28 +173,28 @@ pub fn MPSCQueue(comptime T: type) type {
 
 test "lockfree queue basic operations" {
     const testing = std.testing;
-    
+
     var queue = LockFreeQueue(u32).init();
-    
+
     // Test empty queue
     try testing.expect(queue.isEmpty());
     try testing.expect(queue.pop() == null);
-    
+
     // Test push/pop
     try testing.expect(queue.push(42));
     try testing.expect(!queue.isEmpty());
     try testing.expect(queue.pop().? == 42);
     try testing.expect(queue.isEmpty());
-    
+
     // Test batch operations
     const items = [_]u32{ 1, 2, 3, 4, 5 };
     const pushed = queue.pushBatch(&items);
     try testing.expect(pushed == 5);
-    
+
     var buffer: [10]u32 = undefined;
     const popped = queue.popBatch(&buffer);
     try testing.expect(popped == 5);
-    
+
     for (0..5) |i| {
         try testing.expect(buffer[i] == items[i]);
     }
@@ -202,14 +203,14 @@ test "lockfree queue basic operations" {
 test "mpsc queue operations" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    
+
     var queue = try MPSCQueue(u32).init(allocator);
     defer queue.deinit();
-    
+
     try queue.push(1);
     try queue.push(2);
     try queue.push(3);
-    
+
     try testing.expect(queue.pop().? == 1);
     try testing.expect(queue.pop().? == 2);
     try testing.expect(queue.pop().? == 3);
