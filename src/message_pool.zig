@@ -86,24 +86,34 @@ pub const FastMessage = struct {
     }
 
     pub fn getString(self: *const Self) []const u8 {
-        return switch (self.msg_type) {
-            .user_string => self.payload.string[0..self.payload_len],
-            else => "", // 安全地处理非字符串类型
-        };
+        // 增强类型安全检查
+        if (self.msg_type != .user_string) {
+            std.log.warn("Attempting to get string from non-string message type: {}", .{self.msg_type});
+            return "";
+        }
+        if (self.payload_len > 32) {
+            std.log.warn("String payload length {} exceeds buffer size", .{self.payload_len});
+            return "";
+        }
+        return self.payload.string[0..self.payload_len];
     }
 
     pub fn getInt(self: *const Self) i64 {
-        return switch (self.msg_type) {
-            .user_int => self.payload.int_val,
-            else => 0, // 安全地处理非整数类型
-        };
+        // 增强类型安全检查
+        if (self.msg_type != .user_int) {
+            std.log.warn("Attempting to get int from non-int message type: {}", .{self.msg_type});
+            return 0;
+        }
+        return self.payload.int_val;
     }
 
     pub fn getFloat(self: *const Self) f64 {
-        return switch (self.msg_type) {
-            .user_float => self.payload.float_val,
-            else => 0.0, // 安全地处理非浮点类型
-        };
+        // 增强类型安全检查
+        if (self.msg_type != .user_float) {
+            std.log.warn("Attempting to get float from non-float message type: {}", .{self.msg_type});
+            return 0.0;
+        }
+        return self.payload.float_val;
     }
 
     // 类型安全检查
