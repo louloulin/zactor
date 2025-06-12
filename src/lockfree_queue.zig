@@ -54,18 +54,21 @@ pub fn LockFreeQueue(comptime T: type) type {
         pub fn pop(self: *Self) ?T {
             const tail = self.tail.load(.monotonic);
 
+            // 确保tail在有效范围内
+            const safe_tail = tail & (CAPACITY - 1);
+
             // Check if queue is empty using cached head
-            if (tail == self.head_cache) {
+            if (safe_tail == (self.head_cache & (CAPACITY - 1))) {
                 // Update cache and check again
                 self.head_cache = self.head.load(.acquire);
-                if (tail == self.head_cache) {
+                if (safe_tail == (self.head_cache & (CAPACITY - 1))) {
                     return null; // Queue is empty
                 }
             }
 
             // Load item and update tail
-            const item = self.buffer[tail];
-            const next_tail = (tail + 1) & (CAPACITY - 1);
+            const item = self.buffer[safe_tail];
+            const next_tail = (safe_tail + 1) & (CAPACITY - 1);
             self.tail.store(next_tail, .release);
             return item;
         }
