@@ -128,12 +128,18 @@ pub const FastMessage = struct {
 
     // 消息完整性验证
     pub fn validate(self: *const Self) bool {
-        return switch (self.msg_type) {
+        // 检查消息类型是否有效
+        const type_valid = switch (self.msg_type) {
             .user_string => self.payload_len <= 32, // 字符串长度不能超过缓冲区
             .user_int, .user_float => self.payload_len == 0, // 数值类型不使用payload_len
             .system_ping, .system_pong, .system_stop => self.payload_len == 0, // 系统消息不使用payload_len
             .control_shutdown => self.payload_len == 0, // 控制消息不使用payload_len
         };
+
+        // 检查sequence字段是否表示消息正在使用中
+        const state_valid = self.sequence > 0; // 0表示空闲，>0表示使用中
+
+        return type_valid and state_valid;
     }
 
     // 调试信息
@@ -195,38 +201,38 @@ pub const MessagePool = struct {
 
     pub fn acquire(self: *Self) ?*FastMessage {
         if (self.free_queue.pop()) |msg| {
-            // 验证获取的消息是否处于有效状态
-            if (!msg.validate()) {
-                std.log.warn("Acquired invalid message, resetting...", .{});
-                self.resetMessage(msg);
-            }
+            // 完全重置消息到干净状态，确保没有残留数据
+            msg.* = FastMessage{
+                .msg_type = .user_string,
+                .actor_id = 0,
+                .sender_id = 0,
+                .sequence = 1, // 1表示使用中，0表示空闲
+                .payload = .{ .string = [_]u8{0} ** 32 },
+                .payload_len = 0,
+                ._padding = undefined,
+            };
             return msg;
         }
         return null;
     }
 
-    // 内部方法：重置消息到安全状态
-    fn resetMessage(self: *Self, msg: *FastMessage) void {
-        _ = self;
+    pub fn release(self: *Self, msg: *FastMessage) void {
+        // 检查消息是否已经被释放
+        if (msg.sequence == 0) {
+            std.log.warn("Double release detected, ignoring", .{});
+            return;
+        }
+
+        // 完全重置消息到安全状态，防止数据污染
         msg.* = FastMessage{
             .msg_type = .user_string,
             .actor_id = 0,
             .sender_id = 0,
-            .sequence = 0,
+            .sequence = 0, // 0表示空闲
             .payload = .{ .string = [_]u8{0} ** 32 },
             .payload_len = 0,
             ._padding = undefined,
         };
-    }
-
-    pub fn release(self: *Self, msg: *FastMessage) void {
-        // 验证消息在释放前的状态
-        if (!msg.validate()) {
-            std.log.warn("Releasing invalid message: type={}, len={}", .{ msg.msg_type, msg.payload_len });
-        }
-
-        // 重置消息到安全状态
-        self.resetMessage(msg);
 
         if (!self.free_queue.push(msg)) {
             // This should never happen in a properly sized pool
@@ -235,7 +241,9 @@ pub const MessagePool = struct {
     }
 
     pub fn nextSequence(self: *Self) u64 {
-        return self.sequence_counter.fetchAdd(1, .monotonic);
+        // 确保sequence永远不为0（0用作空闲状态标记）
+        const seq = self.sequence_counter.fetchAdd(1, .monotonic) + 1;
+        return if (seq == 0) 1 else seq;
     }
 
     pub fn getStats(self: *Self) PoolStats {

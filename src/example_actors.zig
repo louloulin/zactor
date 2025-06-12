@@ -46,7 +46,12 @@ pub const HighPerfCounterActor = struct {
                 // 处理ping - 报告当前状态
                 const now = std.time.nanoTimestamp();
                 const elapsed_ms = @divTrunc(now - self.last_report_time, 1000000);
-                const messages_in_window = current_count - self.last_report_count;
+
+                // 安全地计算消息窗口，避免溢出
+                const messages_in_window = if (current_count >= self.last_report_count)
+                    current_count - self.last_report_count
+                else
+                    current_count; // 如果发生溢出，使用当前计数
 
                 if (elapsed_ms > 0) {
                     const rate = @divTrunc(messages_in_window * 1000, @as(u64, @intCast(elapsed_ms)));

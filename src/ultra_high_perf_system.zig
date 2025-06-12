@@ -152,6 +152,7 @@ pub const UltraHighPerfSystem = struct {
         const actor = self.actor_map.get(actor_id) orelse return false;
 
         if (self.message_pool.acquire()) |msg| {
+            // 消息已经在acquire时设置了sequence=1，现在设置实际的sequence
             const sequence = self.message_pool.nextSequence();
             msg.* = FastMessage.createUserString(actor_id, 0, sequence, data);
 
