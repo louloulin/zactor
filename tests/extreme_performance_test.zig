@@ -19,14 +19,14 @@ const UltraActor = struct {
 
     pub fn receive(self: *Self, message: zactor.Message, context: *zactor.ActorContext) !void {
         _ = context;
-        
+
         const count = self.message_count.fetchAdd(1, .monotonic) + 1;
-        
+
         switch (message.message_type) {
             .user => {
                 // Minimal processing - just count
                 // No parsing, no work simulation
-                
+
                 // Report progress every 100k messages
                 if (count % 100000 == 0) {
                     const now = std.time.nanoTimestamp();
@@ -57,12 +57,12 @@ const UltraActor = struct {
     pub fn postStop(self: *Self, context: *zactor.ActorContext) !void {
         _ = context;
         const final_count = self.message_count.load(.monotonic);
-        std.log.info("🛑 UltraActor '{s}' stopping (processed {} messages)", .{self.name, final_count});
+        std.log.info("🛑 UltraActor '{s}' stopping (processed {} messages)", .{ self.name, final_count });
     }
 
     pub fn preRestart(self: *Self, context: *zactor.ActorContext, reason: anyerror) !void {
         _ = context;
-        std.log.info("🔄 UltraActor '{s}' restarting due to: {}", .{self.name, reason});
+        std.log.info("🔄 UltraActor '{s}' restarting due to: {}", .{ self.name, reason });
     }
 
     pub fn postRestart(self: *Self, context: *zactor.ActorContext) !void {
@@ -81,13 +81,15 @@ pub fn main() !void {
     // Initialize ZActor with maximum performance settings
     zactor.init(.{
         .max_actors = 1000,
-        .mailbox_capacity = 8192,
-        .scheduler_threads = 8, // Use more threads
-        .enable_work_stealing = true,
+        .default_mailbox_capacity = 8192,
+        .scheduler_config = .{
+            .worker_threads = 8, // Use more threads
+            .enable_work_stealing = true,
+        },
     });
 
     // Create actor system
-    var system = try zactor.ActorSystem.init("extreme-perf-test", allocator);
+    var system = try zactor.ActorSystem.init("extreme-perf-test", zactor.Config.development(), allocator);
     defer system.deinit();
 
     // Start the system
@@ -105,7 +107,7 @@ pub fn main() !void {
     for (0..num_actors) |i| {
         const actor_name = try std.fmt.allocPrint(allocator, "Ultra-{}", .{i});
         defer allocator.free(actor_name);
-        
+
         const actor = try system.spawn(UltraActor, UltraActor.init(actor_name));
         try actors.append(actor);
         std.log.info("✅ Spawned actor: {}", .{actor.getId()});
@@ -117,8 +119,8 @@ pub fn main() !void {
     // Extreme performance test parameters
     const messages_per_actor = 1000000; // 1 million messages per actor
     const total_messages = messages_per_actor * num_actors;
-    
-    std.log.info("📤 Starting EXTREME test: {} actors × {}M messages = {}M total messages", .{num_actors, messages_per_actor / 1000000, total_messages / 1000000});
+
+    std.log.info("📤 Starting EXTREME test: {} actors × {}M messages = {}M total messages", .{ num_actors, messages_per_actor / 1000000, total_messages / 1000000 });
 
     const test_start = std.time.nanoTimestamp();
 
@@ -143,8 +145,8 @@ pub fn main() !void {
     const send_end = std.time.nanoTimestamp();
     const send_time_ms = @divTrunc(send_end - test_start, 1000000);
     const send_rate = @divTrunc(total_messages * 1000, @as(u64, @intCast(send_time_ms + 1)));
-    
-    std.log.info("📤 Message sending completed in {}ms (rate: {} msg/s)", .{send_time_ms, send_rate});
+
+    std.log.info("📤 Message sending completed in {}ms (rate: {} msg/s)", .{ send_time_ms, send_rate });
 
     // Wait for message processing
     std.log.info("⏳ Waiting for message processing...", .{});
@@ -161,7 +163,7 @@ pub fn main() !void {
     // Get system stats
     const stats = system.getStats();
     defer stats.deinit(allocator);
-    
+
     const test_end = std.time.nanoTimestamp();
     const total_time_ms = @divTrunc(test_end - test_start, 1000000);
     const overall_rate = @divTrunc(stats.messages_received * 1000, @as(u64, @intCast(total_time_ms + 1)));

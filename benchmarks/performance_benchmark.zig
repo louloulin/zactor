@@ -59,12 +59,14 @@ pub fn main() !void {
     // Initialize ZActor
     zactor.init(.{
         .max_actors = 10,
-        .scheduler_threads = 2,
-        .enable_work_stealing = true,
+        .scheduler_config = .{
+            .worker_threads = 2,
+            .enable_work_stealing = true,
+        },
     });
 
     // Create actor system
-    var system = try zactor.ActorSystem.init("benchmark-system", allocator);
+    var system = try zactor.ActorSystem.init("benchmark-system", zactor.Config.development(), allocator);
     defer system.deinit();
 
     // Start the system
@@ -92,7 +94,7 @@ pub fn main() !void {
         };
         sent_count += 1;
     }
-    
+
     std.log.info("Messages sent successfully: {}, failed: {}", .{ sent_count, failed_count });
 
     const send_end_time = std.time.nanoTimestamp();
@@ -102,28 +104,28 @@ pub fn main() !void {
 
     // Wait for processing with progress monitoring
     std.log.info("Waiting for message processing...", .{});
-    
+
     // Wait for all messages to be processed with active monitoring
     var wait_count: u32 = 0;
     const max_wait_iterations = 100; // Wait up to 10 seconds
     while (wait_count < max_wait_iterations) {
         std.time.sleep(100 * std.time.ns_per_ms); // 100ms intervals
-        
+
         // Check if mailbox is empty and no more messages to process
         if (actor_ref.mailbox.isEmpty()) {
             std.log.info("Mailbox is empty after {d:.1} seconds", .{@as(f64, @floatFromInt(wait_count)) * 0.1});
             break;
         }
-        
+
         // Log progress every second
         if (wait_count % 10 == 0) {
             const mailbox_size = actor_ref.mailbox.size();
             std.log.info("Progress check: mailbox size = {}, waited {d:.1}s", .{ mailbox_size, @as(f64, @floatFromInt(wait_count)) * 0.1 });
         }
-        
+
         wait_count += 1;
     }
-    
+
     if (wait_count >= max_wait_iterations) {
         std.log.warn("Timeout waiting for message processing after 10 seconds", .{});
     }

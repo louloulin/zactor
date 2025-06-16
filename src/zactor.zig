@@ -34,7 +34,7 @@ pub const utils = struct {
 // Re-export main components for backward compatibility
 pub const Actor = core.actor.Actor;
 pub const ActorContext = core.actor.ActorContext;
-pub const ActorSystem = core.system.ActorSystem;
+pub const ActorSystem = core.actor.ActorSystem;
 pub const Message = core.message.Message;
 pub const SystemMessage = core.message.SystemMessage;
 pub const ControlMessage = core.message.ControlMessage;
@@ -103,19 +103,19 @@ pub const UtilsStats = utils.UtilsStats;
 pub const Metrics = struct {
     system_stats: SystemStats,
     utils_stats: UtilsStats,
-    
+
     pub fn init() Metrics {
         return Metrics{
             .system_stats = SystemStats.init(),
             .utils_stats = UtilsStats.init(),
         };
     }
-    
+
     pub fn reset(self: *Metrics) void {
         self.system_stats.reset();
         self.utils_stats.reset();
     }
-    
+
     pub fn print(self: *const Metrics) void {
         std.log.info("ZActor Unified Metrics:", .{});
         self.system_stats.print();
@@ -128,10 +128,10 @@ pub var metrics: Metrics = Metrics.init();
 
 test "unified metrics functionality" {
     var test_metrics = Metrics.init();
-    
+
     // Test basic functionality
     test_metrics.reset();
-    
+
     // Verify metrics can be printed without error
     test_metrics.print();
 }
@@ -140,13 +140,13 @@ test "core module integration" {
     // Test that all core modules are accessible
     const allocator = testing.allocator;
     _ = allocator;
-    
+
     // Test type accessibility
     const actor_state = ActorState.created;
     const system_state = SystemState.stopped;
     _ = actor_state;
     _ = system_state;
-    
+
     // Test configuration
     const cfg = Config.development();
     _ = cfg;
