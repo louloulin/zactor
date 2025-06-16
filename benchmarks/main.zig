@@ -57,16 +57,19 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
     // Initialize ZActor
     zactor.init(.{
         .max_actors = config.num_actors * 2,
-        .scheduler_threads = config.scheduler_threads,
-        .enable_work_stealing = true,
-        .mailbox_capacity = 10000,
+        .scheduler_config = .{
+            .worker_threads = config.scheduler_threads,
+            .enable_work_stealing = true,
+            .task_queue_capacity = 10000,
+        },
+        .default_mailbox_capacity = 10000,
     });
 
     // Reset metrics
     zactor.metrics.reset();
 
     // Create actor system
-    var system = try zactor.ActorSystem.init("benchmark-system", allocator);
+    var system = try zactor.ActorSystem.init("benchmark-system", zactor.SystemConfiguration.default(), allocator);
     defer system.deinit();
 
     try system.start();
@@ -142,13 +145,15 @@ fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
 
     zactor.init(.{
         .max_actors = 10,
-        .scheduler_threads = 1, // Single thread for consistent latency measurement
-        .enable_work_stealing = false,
+        .scheduler_config = .{
+            .worker_threads = 1, // Single thread for consistent latency measurement
+            .enable_work_stealing = false,
+        },
     });
 
     zactor.metrics.reset();
 
-    var system = try zactor.ActorSystem.init("latency-benchmark", allocator);
+    var system = try zactor.ActorSystem.init("latency-benchmark", zactor.SystemConfiguration.default(), allocator);
     defer system.deinit();
 
     try system.start();
@@ -243,13 +248,15 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         zactor.init(.{
             .max_actors = num_actors * 2,
-            .scheduler_threads = 4,
-            .enable_work_stealing = true,
+            .scheduler_config = .{
+                .worker_threads = 4,
+                .enable_work_stealing = true,
+            },
         });
 
         zactor.metrics.reset();
 
-        var system = try zactor.ActorSystem.init("no-supervision-benchmark", allocator);
+        var system = try zactor.ActorSystem.init("no-supervision-benchmark", zactor.SystemConfiguration.default(), allocator);
         defer system.deinit();
 
         try system.start();
@@ -296,13 +303,15 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         zactor.init(.{
             .max_actors = num_actors * 2,
-            .scheduler_threads = 4,
-            .enable_work_stealing = true,
+            .scheduler_config = .{
+                .worker_threads = 4,
+                .enable_work_stealing = true,
+            },
         });
 
         zactor.metrics.reset();
 
-        var system = try zactor.ActorSystem.init("supervision-benchmark", allocator);
+        var system = try zactor.ActorSystem.init("supervision-benchmark", zactor.SystemConfiguration.default(), allocator);
         defer system.deinit();
 
         // Configure supervision

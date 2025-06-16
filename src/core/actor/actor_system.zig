@@ -12,10 +12,30 @@ const Thread = std.Thread;
 const Actor = @import("actor.zig").Actor;
 const ActorRef = @import("actor_ref.zig").ActorRef;
 const LocalActorRef = @import("actor_ref.zig").LocalActorRef;
-const ActorContext = @import("actor_context.zig").ActorContext;
-const ActorProps = @import("actor_context.zig").ActorProps;
+const ActorConfig = @import("mod.zig").ActorConfig;
+// 简化的 ActorProps 实现
+pub const ActorProps = struct {
+    behavior_factory: *const fn (context: *ActorContext) anyerror!*ActorBehavior,
+    config: ActorConfig,
+
+    pub fn create(behavior_factory: *const fn (context: *ActorContext) anyerror!*ActorBehavior) ActorProps {
+        return ActorProps{
+            .behavior_factory = behavior_factory,
+            .config = ActorConfig.default(),
+        };
+    }
+};
+
+// 简化的 TerminatedMessage
+pub const TerminatedMessage = struct {
+    actor: *ActorRef,
+    address_terminated: bool,
+    existing_watcher: bool,
+};
 const Message = @import("../message/mod.zig").Message;
 const Scheduler = @import("../scheduler/mod.zig").Scheduler;
+const MailboxConfig = @import("../mailbox/mod.zig").MailboxConfig;
+const MailboxFactory = @import("../mailbox/mod.zig").MailboxFactory;
 const MailboxInterface = @import("../mailbox/mod.zig").MailboxInterface;
 const ActorPath = @import("mod.zig").ActorPath;
 const ActorSelection = @import("mod.zig").ActorSelection;
@@ -66,7 +86,7 @@ pub const ActorSystem = struct {
         errdefer allocator.destroy(self);
 
         // 初始化调度器
-        const scheduler = try Scheduler.init(config.scheduler, allocator);
+        const scheduler = try Scheduler.init(config.scheduler_config, allocator);
         errdefer scheduler.deinit();
 
         self.* = Self{
@@ -210,24 +230,19 @@ pub const ActorSystem = struct {
     }
 
     pub fn createActor(self: *Self, props: ActorProps, path: ActorPath, parent: ?*ActorRef) !*Actor {
-        // 创建Actor上下文
-        const context = try self.allocator.create(ActorContext);
-        errdefer self.allocator.destroy(context);
+        _ = path;
+        _ = parent;
 
-        // 创建临时ActorRef用于初始化上下文
-        const temp_ref = try LocalActorRef.init(undefined, path, self.allocator);
-        defer temp_ref.deinit();
-
-        context.* = try ActorContext.init(temp_ref.getActorRef(), parent, self, props.config, self.allocator);
-
-        // 创建Actor行为
-        const behavior = try props.behavior_factory(context);
+        // 创建邮箱
+        const mailbox_config = MailboxConfig.default();
+        const mailbox = try MailboxFactory.create(mailbox_config, self.allocator);
 
         // 创建Actor实例
-        const actor = try Actor.init(context, behavior, self.allocator);
+        const actor = try Actor.init(self.allocator, props.config, &mailbox);
 
-        // 更新ActorRef指向实际的Actor
-        temp_ref.actor = actor;
+        // 创建Actor行为
+        const behavior = try props.behavior_factory(&actor.context);
+        actor.setBehavior(behavior);
 
         return actor;
     }
@@ -419,49 +434,163 @@ pub const Extension = struct {
     }
 };
 
-// Guardian行为
+// 简化的 Guardian 行为
 const GuardianBehavior = struct {
-    fn create(context: *ActorContext) !ActorBehavior {
-        _ = context;
-        return ActorBehavior{
-            .receive = receive,
+    const vtable = ActorBehavior.VTable{
+        .receive = receive,
+        .preStart = preStart,
+        .postStop = postStop,
+        .preRestart = preRestart,
+        .postRestart = postRestart,
+        .supervisorStrategy = supervisorStrategy,
+    };
+
+    fn create(context: *ActorContext) !*ActorBehavior {
+        const behavior = try context.allocator.create(ActorBehavior);
+        behavior.* = ActorBehavior{
+            .vtable = &vtable,
         };
+        return behavior;
     }
 
-    fn receive(context: *ActorContext, message: *Message) !void {
+    fn receive(behavior: *ActorBehavior, context: *ActorContext, message: *Message) !void {
+        _ = behavior;
         _ = context;
         _ = message;
         // Guardian的默认行为：监督子Actor
     }
+
+    fn preStart(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn postStop(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn preRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        std.log.debug("Guardian preRestart: {}", .{reason});
+    }
+
+    fn postRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        std.log.debug("Guardian postRestart: {}", .{reason});
+    }
+
+    fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {
+        _ = behavior;
+        return .restart_actor;
+    }
 };
 
 const UserGuardianBehavior = struct {
-    fn create(context: *ActorContext) !ActorBehavior {
-        _ = context;
-        return ActorBehavior{
-            .receive = receive,
+    const vtable = ActorBehavior.VTable{
+        .receive = receive,
+        .preStart = preStart,
+        .postStop = postStop,
+        .preRestart = preRestart,
+        .postRestart = postRestart,
+        .supervisorStrategy = supervisorStrategy,
+    };
+
+    fn create(context: *ActorContext) !*ActorBehavior {
+        const behavior = try context.allocator.create(ActorBehavior);
+        behavior.* = ActorBehavior{
+            .vtable = &vtable,
         };
+        return behavior;
     }
 
-    fn receive(context: *ActorContext, message: *Message) !void {
+    fn receive(behavior: *ActorBehavior, context: *ActorContext, message: *Message) !void {
+        _ = behavior;
         _ = context;
         _ = message;
         // 用户Guardian的行为
     }
+
+    fn preStart(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn postStop(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn preRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        _ = reason;
+    }
+
+    fn postRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        _ = reason;
+    }
+
+    fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {
+        _ = behavior;
+        return .restart_actor;
+    }
 };
 
 const SystemGuardianBehavior = struct {
-    fn create(context: *ActorContext) !ActorBehavior {
-        _ = context;
-        return ActorBehavior{
-            .receive = receive,
+    const vtable = ActorBehavior.VTable{
+        .receive = receive,
+        .preStart = preStart,
+        .postStop = postStop,
+        .preRestart = preRestart,
+        .postRestart = postRestart,
+        .supervisorStrategy = supervisorStrategy,
+    };
+
+    fn create(context: *ActorContext) !*ActorBehavior {
+        const behavior = try context.allocator.create(ActorBehavior);
+        behavior.* = ActorBehavior{
+            .vtable = &vtable,
         };
+        return behavior;
     }
 
-    fn receive(context: *ActorContext, message: *Message) !void {
+    fn receive(behavior: *ActorBehavior, context: *ActorContext, message: *Message) !void {
+        _ = behavior;
         _ = context;
         _ = message;
         // 系统Guardian的行为
+    }
+
+    fn preStart(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn postStop(behavior: *ActorBehavior, context: *ActorContext) !void {
+        _ = behavior;
+        _ = context;
+    }
+
+    fn preRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        _ = reason;
+    }
+
+    fn postRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
+        _ = behavior;
+        _ = context;
+        _ = reason;
+    }
+
+    fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {
+        _ = behavior;
+        return .restart_actor;
     }
 };
 
@@ -490,8 +619,8 @@ const ActorRefContext = struct {
     }
 };
 
-const TerminatedMessage = @import("actor_context.zig").TerminatedMessage;
 const ActorBehavior = @import("actor.zig").ActorBehavior;
+const ActorContext = @import("actor.zig").ActorContext;
 
 fn generateActorName(allocator: Allocator) ![]const u8 {
     const timestamp = std.time.nanoTimestamp();

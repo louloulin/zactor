@@ -67,10 +67,12 @@ pub const SchedulerError = error{
     SchedulerAlreadyStarted,
     SchedulerShutdown,
     TaskQueueFull,
+    QueueFull,
     WorkerThreadFailed,
     InvalidSchedulerConfig,
     ResourceExhausted,
     TaskExecutionFailed,
+    NotImplemented,
 };
 
 // 调度策略
@@ -378,6 +380,7 @@ pub const WorkerInfo = struct {
 // 调度器接口
 pub const SchedulerInterface = struct {
     vtable: *const VTable,
+    ptr: *anyopaque,
 
     pub const VTable = struct {
         start: *const fn (self: *SchedulerInterface) SchedulerError!void,
@@ -387,6 +390,7 @@ pub const SchedulerInterface = struct {
         getStats: *const fn (self: *SchedulerInterface) *const SchedulerStats,
         getWorkerCount: *const fn (self: *SchedulerInterface) u32,
         isRunning: *const fn (self: *SchedulerInterface) bool,
+        deinit: *const fn (self: *SchedulerInterface) void,
     };
 
     pub fn start(self: *SchedulerInterface) !void {
@@ -415,6 +419,10 @@ pub const SchedulerInterface = struct {
 
     pub fn isRunning(self: *SchedulerInterface) bool {
         return self.vtable.isRunning(self);
+    }
+
+    pub fn deinit(self: *SchedulerInterface) void {
+        self.vtable.deinit(self);
     }
 };
 
@@ -458,7 +466,10 @@ const WorkStealingSchedulerVTable = SchedulerInterface.VTable{
     .start = workStealingStart,
     .stop = workStealingStop,
     .submit = workStealingSubmit,
+    .submitBatch = workStealingSubmitBatch,
     .getStats = workStealingGetStats,
+    .getWorkerCount = workStealingGetWorkerCount,
+    .isRunning = workStealingIsRunning,
     .deinit = workStealingDeinit,
 };
 
@@ -472,21 +483,39 @@ fn workStealingStop(self: *SchedulerInterface) SchedulerError!void {
     return scheduler.stop();
 }
 
-fn workStealingSubmit(self: *SchedulerInterface, task: Task) SchedulerError!void {
+fn workStealingSubmit(self: *SchedulerInterface, task: *Task) SchedulerError!void {
     const scheduler = @as(*WorkStealingScheduler, @ptrCast(@alignCast(self.ptr)));
-    return scheduler.submit(task);
+    return scheduler.submit(task.*);
 }
 
-fn workStealingGetStats(self: *SchedulerInterface) SchedulerStats {
+fn workStealingSubmitBatch(self: *SchedulerInterface, tasks: []*Task) SchedulerError!u32 {
     const scheduler = @as(*WorkStealingScheduler, @ptrCast(@alignCast(self.ptr)));
-    const ws_stats = scheduler.getStats();
-    return SchedulerStats{
-        .tasks_submitted = ws_stats.tasks_submitted.load(.monotonic),
-        .tasks_completed = ws_stats.tasks_completed.load(.monotonic),
-        .tasks_failed = ws_stats.tasks_failed.load(.monotonic),
-        .active_workers = @intCast(scheduler.workers.len),
-        .queue_size = scheduler.global_queue.size(),
-    };
+    var submitted: u32 = 0;
+    for (tasks) |task| {
+        scheduler.submit(task.*) catch |err| {
+            if (err == SchedulerError.QueueFull) {
+                break;
+            }
+            return err;
+        };
+        submitted += 1;
+    }
+    return submitted;
+}
+
+fn workStealingGetStats(self: *SchedulerInterface) *const SchedulerStats {
+    const scheduler = @as(*WorkStealingScheduler, @ptrCast(@alignCast(self.ptr)));
+    return &scheduler.stats;
+}
+
+fn workStealingGetWorkerCount(self: *SchedulerInterface) u32 {
+    const scheduler = @as(*WorkStealingScheduler, @ptrCast(@alignCast(self.ptr)));
+    return @intCast(scheduler.workers.len);
+}
+
+fn workStealingIsRunning(self: *SchedulerInterface) bool {
+    const scheduler = @as(*WorkStealingScheduler, @ptrCast(@alignCast(self.ptr)));
+    return scheduler.getState() == .running;
 }
 
 fn workStealingDeinit(self: *SchedulerInterface) void {

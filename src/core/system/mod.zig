@@ -363,7 +363,7 @@ pub const SystemStats = struct {
 
     pub fn init() SystemStats {
         return SystemStats{
-            .start_time = std.time.milliTimestamp(),
+            .start_time = 0, // 将在运行时设置
             .uptime_ms = AtomicValue(u64).init(0),
             .total_actors = AtomicValue(u32).init(0),
             .active_actors = AtomicValue(u32).init(0),
@@ -380,6 +380,12 @@ pub const SystemStats = struct {
             .max_message_processing_time_ns = AtomicValue(u64).init(0),
             .throughput_messages_per_second = AtomicValue(u64).init(0),
         };
+    }
+
+    pub fn initWithCurrentTime() SystemStats {
+        var stats = init();
+        stats.start_time = std.time.milliTimestamp();
+        return stats;
     }
 
     pub fn updateUptime(self: *SystemStats) void {

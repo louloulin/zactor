@@ -88,7 +88,7 @@ pub const UtilsConfig = utils.UtilsConfig;
 pub var config: Config = Config.default();
 
 // Initialize ZActor with custom configuration
-pub fn init(cfg: Config) void {
+pub fn configure(cfg: Config) void {
     config = cfg;
 }
 
@@ -124,7 +124,14 @@ pub const Metrics = struct {
 };
 
 // Global metrics instance
-pub var metrics: Metrics = Metrics.init();
+pub var metrics: Metrics = undefined;
+
+// 初始化函数
+pub fn init(cfg: Config) void {
+    metrics = Metrics.init();
+    metrics.system_stats.start_time = std.time.milliTimestamp();
+    _ = cfg; // 暂时未使用
+}
 
 test "unified metrics functionality" {
     var test_metrics = Metrics.init();
