@@ -45,6 +45,11 @@ pub const Supervisor = core.actor.Supervisor;
 pub const SupervisorStrategy = core.actor.SupervisorStrategy;
 pub const SupervisorConfig = core.actor.SupervisorConfig;
 
+// Re-export high-performance components
+pub const messaging = core.messaging;
+pub const message = core.message;
+pub const scheduler = core.scheduler;
+
 // Core types
 pub const ActorId = u64;
 pub const MessageId = u64;

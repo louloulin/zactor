@@ -54,6 +54,18 @@ pub fn build(b: *std.Build) void {
     const simple_supervisor_test_step = b.step("test-simple-supervisor", "Run simple supervisor tests");
     simple_supervisor_test_step.dependOn(&run_simple_supervisor_tests.step);
 
+    // High performance tests
+    const high_performance_tests = b.addTest(.{
+        .root_source_file = b.path("tests/high_performance_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    high_performance_tests.root_module.addImport("zactor", zactor_module);
+
+    const run_high_performance_tests = b.addRunArtifact(high_performance_tests);
+    const high_performance_test_step = b.step("test-high-performance", "Run high performance tests");
+    high_performance_test_step.dependOn(&run_high_performance_tests.step);
+
     // Examples
     const basic_example = b.addExecutable(.{
         .name = "basic_example",
@@ -96,12 +108,42 @@ pub fn build(b: *std.Build) void {
     });
     stress_test.root_module.addImport("zactor", zactor_module);
 
+    // Ring Buffer基准测试
+    const ring_buffer_benchmark = b.addExecutable(.{
+        .name = "ring_buffer_benchmark",
+        .root_source_file = b.path("examples/ring_buffer_benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ring_buffer_benchmark.root_module.addImport("zactor", zactor_module);
+
+    // 简单Ring Buffer测试
+    const simple_ring_buffer_test = b.addExecutable(.{
+        .name = "simple_ring_buffer_test",
+        .root_source_file = b.path("examples/simple_ring_buffer_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_ring_buffer_test.root_module.addImport("zactor", zactor_module);
+
+    // 高性能基准测试
+    const high_performance_benchmark = b.addExecutable(.{
+        .name = "high_performance_benchmark",
+        .root_source_file = b.path("examples/high_performance_benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    high_performance_benchmark.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
     b.installArtifact(supervisor_example);
     b.installArtifact(simple_supervisor);
     b.installArtifact(stress_test);
+    b.installArtifact(ring_buffer_benchmark);
+    b.installArtifact(simple_ring_buffer_test);
+    b.installArtifact(high_performance_benchmark);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -109,6 +151,9 @@ pub fn build(b: *std.Build) void {
     const run_supervisor = b.addRunArtifact(supervisor_example);
     const run_simple_supervisor = b.addRunArtifact(simple_supervisor);
     const run_stress_test = b.addRunArtifact(stress_test);
+    const run_ring_buffer_benchmark = b.addRunArtifact(ring_buffer_benchmark);
+    const run_simple_ring_buffer_test = b.addRunArtifact(simple_ring_buffer_test);
+    const run_high_performance_benchmark = b.addRunArtifact(high_performance_benchmark);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -124,6 +169,15 @@ pub fn build(b: *std.Build) void {
 
     const stress_test_step = b.step("stress-test", "Run high-performance stress test");
     stress_test_step.dependOn(&run_stress_test.step);
+
+    const ring_buffer_benchmark_step = b.step("ring-buffer-benchmark", "Run Ring Buffer performance benchmark");
+    ring_buffer_benchmark_step.dependOn(&run_ring_buffer_benchmark.step);
+
+    const simple_ring_buffer_test_step = b.step("simple-ring-buffer-test", "Run simple Ring Buffer test");
+    simple_ring_buffer_test_step.dependOn(&run_simple_ring_buffer_test.step);
+
+    const high_performance_benchmark_step = b.step("high-perf-benchmark", "Run high performance benchmark");
+    high_performance_benchmark_step.dependOn(&run_high_performance_benchmark.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{

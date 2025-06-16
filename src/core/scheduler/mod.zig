@@ -8,6 +8,13 @@ const AtomicValue = std.atomic.Value;
 
 // 重新导出调度器组件
 pub const WorkStealingScheduler = @import("work_stealing.zig").WorkStealingScheduler;
+
+// NUMA感知调度器
+pub const NumaScheduler = @import("numa_scheduler.zig").NumaScheduler;
+pub const NumaTopology = @import("numa_scheduler.zig").NumaTopology;
+pub const NumaNode = @import("numa_scheduler.zig").NumaNode;
+pub const AffinityManager = @import("numa_scheduler.zig").AffinityManager;
+
 // TODO: 待实现的调度器模块
 // pub const ThreadPoolScheduler = @import("thread_pool.zig").ThreadPoolScheduler;
 // pub const FiberScheduler = @import("fiber.zig").FiberScheduler;

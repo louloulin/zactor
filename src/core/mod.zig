@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 // 重新导出核心子模块
 pub const actor = @import("actor/mod.zig");
 pub const message = @import("message/mod.zig");
+pub const messaging = @import("messaging/mod.zig");
 pub const scheduler = @import("scheduler/mod.zig");
 pub const system = @import("system/mod.zig");
 
@@ -36,6 +37,16 @@ pub const MessageSerializer = message.MessageSerializer;
 pub const UserMessage = message.UserMessage;
 pub const SystemMessage = message.SystemMessage;
 pub const MessageError = message.MessageError;
+
+// 高性能消息传递相关
+pub const RingBuffer = messaging.RingBuffer;
+pub const RingBufferConfig = messaging.RingBufferConfig;
+pub const RingBufferFactory = messaging.RingBufferFactory;
+pub const BatchProcessor = messaging.BatchProcessor;
+pub const BatchConfig = messaging.BatchConfig;
+pub const BatchStats = messaging.BatchStats;
+pub const AdaptiveBatcher = messaging.AdaptiveBatcher;
+pub const MessageProcessingLoop = messaging.MessageProcessingLoop;
 
 // 调度器相关
 pub const Scheduler = scheduler.Scheduler;
@@ -103,11 +114,11 @@ pub const CoreConfig = struct {
     enable_debugging: bool = false,
     max_actors: usize = 10000,
     max_messages_per_actor: usize = 1000,
-    
+
     pub fn default() CoreConfig {
         return CoreConfig{};
     }
-    
+
     pub fn development() CoreConfig {
         return CoreConfig{
             .actor_config = ActorConfig.development(),
@@ -118,7 +129,7 @@ pub const CoreConfig = struct {
             .max_actors = 1000,
         };
     }
-    
+
     pub fn production() CoreConfig {
         return CoreConfig{
             .actor_config = ActorConfig.production(),
@@ -130,7 +141,7 @@ pub const CoreConfig = struct {
             .max_messages_per_actor = 10000,
         };
     }
-    
+
     pub fn cluster() CoreConfig {
         return CoreConfig{
             .actor_config = ActorConfig.cluster(),
