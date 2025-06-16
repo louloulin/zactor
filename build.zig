@@ -87,17 +87,28 @@ pub fn build(b: *std.Build) void {
     });
     simple_supervisor.root_module.addImport("zactor", zactor_module);
 
+    // 压力测试
+    const stress_test = b.addExecutable(.{
+        .name = "stress_test",
+        .root_source_file = b.path("examples/stress_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    stress_test.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
     b.installArtifact(supervisor_example);
     b.installArtifact(simple_supervisor);
+    b.installArtifact(stress_test);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
     const run_ping_pong = b.addRunArtifact(ping_pong_example);
     const run_supervisor = b.addRunArtifact(supervisor_example);
     const run_simple_supervisor = b.addRunArtifact(simple_supervisor);
+    const run_stress_test = b.addRunArtifact(stress_test);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -110,6 +121,9 @@ pub fn build(b: *std.Build) void {
 
     const simple_supervisor_step = b.step("run-simple-supervisor", "Run simple supervisor example");
     simple_supervisor_step.dependOn(&run_simple_supervisor.step);
+
+    const stress_test_step = b.step("stress-test", "Run high-performance stress test");
+    stress_test_step.dependOn(&run_stress_test.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{
@@ -134,12 +148,10 @@ pub fn build(b: *std.Build) void {
 
     const run_benchmark = b.addRunArtifact(benchmark);
     const run_performance_benchmark = b.addRunArtifact(performance_benchmark);
-    
+
     const benchmark_step = b.step("benchmark", "Run performance benchmarks");
     benchmark_step.dependOn(&run_benchmark.step);
-    
+
     const perf_benchmark_step = b.step("perf-benchmark", "Run detailed performance benchmarks");
     perf_benchmark_step.dependOn(&run_performance_benchmark.step);
-
-
 }
