@@ -1,0 +1,2947 @@
+# ZActor 高性能低延时框架架构设计与优化计划
+
+## 🏛️ 整体模块设计 - 高内聚低耦合架构
+
+### 🎯 设计原则
+
+#### 1. 高内聚 (High Cohesion)
+- **功能聚合**: 相关功能集中在同一模块内
+- **数据局部性**: 相关数据结构紧密组织
+- **职责单一**: 每个模块只负责一个核心功能
+- **接口简洁**: 模块对外暴露最小必要接口
+
+#### 2. 低耦合 (Low Coupling)
+- **依赖注入**: 通过接口而非具体实现依赖
+- **事件驱动**: 模块间通过事件通信，减少直接调用
+- **配置分离**: 配置与实现分离，支持运行时调整
+- **插件化**: 核心功能可插拔，支持扩展
+
+### 🏗️ 分层架构设计
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                        │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │   Examples  │ │ Benchmarks  │ │      User Apps          │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      API Layer                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │ Actor API   │ │ System API  │ │    Extensions API       │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Core Layer                              │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │   Runtime   │ │  Scheduler  │ │       Supervisor        │ │
+│  │   System    │ │   Engine    │ │        Tree             │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   Component Layer                           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │   Actor     │ │   Message   │ │       Mailbox           │ │
+│  │  Component  │ │  Component  │ │      Component          │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 Infrastructure Layer                        │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │   Memory    │ │ Concurrency │ │      Diagnostics        │ │
+│  │  Management │ │  Primitives │ │      & Metrics          │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 📦 包结构设计
+
+#### 🗂️ 目录结构总览
+```
+zactor/
+├── src/                           # 核心源代码
+│   ├── zactor.zig                # 主入口文件
+│   ├── api/                      # API层
+│   ├── core/                     # 核心层
+│   ├── components/               # 组件层
+│   ├── infrastructure/           # 基础设施层
+│   ├── extensions/               # 扩展系统
+│   ├── config/                   # 配置管理
+│   ├── testing/                  # 测试框架
+│   ├── quality/                  # 质量保证
+│   ├── observability/            # 可观测性
+│   ├── security/                 # 安全框架
+│   └── utils/                    # 通用工具
+├── examples/                     # 示例应用
+├── benchmarks/                   # 性能基准测试
+├── tests/                        # 测试套件
+├── docs/                         # 文档
+├── tools/                        # 开发工具
+├── build/                        # 构建系统
+├── packaging/                    # 包管理
+├── deployment/                   # 部署配置
+└── operations/                   # 运维脚本
+```
+
+#### 🎯 API层包设计
+```
+src/api/
+├── mod.zig                       # API层主模块
+├── actor/                        # Actor API
+│   ├── mod.zig                   # Actor API主模块
+│   ├── actor_api.zig             # Actor操作接口
+│   ├── actor_builder.zig         # Actor构建器
+│   ├── actor_ref.zig             # Actor引用
+│   └── behavior_api.zig          # 行为定义接口
+├── system/                       # System API
+│   ├── mod.zig                   # System API主模块
+│   ├── system_api.zig            # 系统操作接口
+│   ├── lifecycle_api.zig         # 生命周期管理
+│   ├── configuration_api.zig     # 配置管理接口
+│   └── monitoring_api.zig        # 监控接口
+├── extensions/                   # Extensions API
+│   ├── mod.zig                   # 扩展API主模块
+│   ├── extension_api.zig         # 扩展接口
+│   ├── plugin_api.zig            # 插件接口
+│   └── registry_api.zig          # 注册表接口
+└── types/                        # 公共类型定义
+    ├── mod.zig                   # 类型主模块
+    ├── actor_types.zig           # Actor相关类型
+    ├── message_types.zig         # 消息相关类型
+    ├── system_types.zig          # 系统相关类型
+    └── error_types.zig           # 错误类型定义
+```
+
+#### 🏛️ 核心层包设计
+```
+src/core/
+├── mod.zig                       # 核心层主模块
+├── runtime/                      # 运行时系统
+│   ├── mod.zig                   # 运行时主模块
+│   ├── runtime_system.zig        # 运行时系统实现
+│   ├── lifecycle_manager.zig     # 生命周期管理器
+│   ├── resource_manager.zig      # 资源管理器
+│   └── configuration_manager.zig # 配置管理器
+├── scheduler/                    # 调度引擎
+│   ├── mod.zig                   # 调度器主模块
+│   ├── scheduler_engine.zig      # 调度引擎实现
+│   ├── work_stealing/            # 工作窃取调度器
+│   │   ├── mod.zig               # 工作窃取主模块
+│   │   ├── work_stealing_core.zig # 工作窃取核心
+│   │   ├── worker_thread.zig     # 工作线程
+│   │   ├── task_queue.zig        # 任务队列
+│   │   └── load_balancer.zig     # 负载均衡器
+│   ├── strategies/               # 调度策略
+│   │   ├── mod.zig               # 策略主模块
+│   │   ├── strategy_interface.zig # 策略接口
+│   │   ├── priority_based.zig    # 优先级调度
+│   │   ├── round_robin.zig       # 轮询调度
+│   │   └── numa_aware.zig        # NUMA感知调度
+│   └── affinity/                 # 亲和性管理
+│       ├── mod.zig               # 亲和性主模块
+│       ├── affinity_manager.zig  # 亲和性管理器
+│       ├── cpu_topology.zig      # CPU拓扑
+│       └── numa_topology.zig     # NUMA拓扑
+└── supervisor/                   # 监督树
+    ├── mod.zig                   # 监督器主模块
+    ├── supervisor_tree.zig       # 监督树实现
+    ├── supervision_strategy.zig  # 监督策略
+    ├── fault_tolerance.zig       # 容错机制
+    └── recovery_manager.zig      # 恢复管理器
+```
+
+#### 🧩 组件层包设计
+```
+src/components/
+├── mod.zig                       # 组件层主模块
+├── actor/                        # Actor组件
+│   ├── mod.zig                   # Actor组件主模块
+│   ├── actor_component.zig       # Actor组件实现
+│   ├── actor_factory.zig         # Actor工厂
+│   ├── behavior_registry.zig     # 行为注册表
+│   ├── lifecycle_hooks.zig       # 生命周期钩子
+│   ├── actor_pool.zig            # Actor池
+│   └── actor_metrics.zig         # Actor指标
+├── message/                      # 消息组件
+│   ├── mod.zig                   # 消息组件主模块
+│   ├── message_component.zig     # 消息组件实现
+│   ├── message_factory.zig       # 消息工厂
+│   ├── message_pool.zig          # 消息池
+│   ├── serialization/            # 序列化引擎
+│   │   ├── mod.zig               # 序列化主模块
+│   │   ├── serialization_engine.zig # 序列化引擎
+│   │   ├── binary_serializer.zig # 二进制序列化器
+│   │   ├── json_serializer.zig   # JSON序列化器
+│   │   └── custom_serializer.zig # 自定义序列化器
+│   └── routing/                  # 路由引擎
+│       ├── mod.zig               # 路由主模块
+│       ├── routing_engine.zig    # 路由引擎
+│       ├── routing_table.zig     # 路由表
+│       └── message_router.zig    # 消息路由器
+└── mailbox/                      # 邮箱组件
+    ├── mod.zig                   # 邮箱组件主模块
+    ├── mailbox_component.zig     # 邮箱组件实现
+    ├── mailbox_factory.zig       # 邮箱工厂
+    ├── mailbox_pool.zig          # 邮箱池
+    ├── implementations/          # 邮箱实现
+    │   ├── mod.zig               # 实现主模块
+    │   ├── standard_mailbox.zig  # 标准邮箱
+    │   ├── fast_mailbox.zig      # 快速邮箱
+    │   ├── sharded_mailbox.zig   # 分片邮箱
+    │   └── ultra_fast_mailbox.zig # 超快邮箱
+    └── performance/              # 性能监控
+        ├── mod.zig               # 性能主模块
+        ├── performance_monitor.zig # 性能监控器
+        ├── metrics_collector.zig # 指标收集器
+        └── optimization_engine.zig # 优化引擎
+```
+
+#### 🏗️ 基础设施层包设计
+```
+src/infrastructure/
+├── mod.zig                       # 基础设施主模块
+├── memory/                       # 内存管理
+│   ├── mod.zig                   # 内存管理主模块
+│   ├── memory_manager.zig        # 内存管理器
+│   ├── allocators/               # 分配器
+│   │   ├── mod.zig               # 分配器主模块
+│   │   ├── pool_allocator.zig    # 池分配器
+│   │   ├── arena_allocator.zig   # 竞技场分配器
+│   │   ├── slab_allocator.zig    # 板块分配器
+│   │   └── numa_allocator.zig    # NUMA感知分配器
+│   ├── pools/                    # 对象池
+│   │   ├── mod.zig               # 对象池主模块
+│   │   ├── object_pool.zig       # 通用对象池
+│   │   ├── message_pool.zig      # 消息池
+│   │   ├── actor_pool.zig        # Actor池
+│   │   └── buffer_pool.zig       # 缓冲区池
+│   └── gc/                       # 垃圾回收
+│       ├── mod.zig               # GC主模块
+│       ├── reference_counting.zig # 引用计数
+│       ├── mark_sweep.zig        # 标记清除
+│       └── generational_gc.zig   # 分代GC
+├── concurrency/                  # 并发原语
+│   ├── mod.zig                   # 并发主模块
+│   ├── primitives/               # 基础原语
+│   │   ├── mod.zig               # 原语主模块
+│   │   ├── atomic_operations.zig # 原子操作
+│   │   ├── lock_free_queue.zig   # 无锁队列
+│   │   ├── lock_free_stack.zig   # 无锁栈
+│   │   ├── ring_buffer.zig       # 环形缓冲区
+│   │   └── hazard_pointers.zig   # 危险指针
+│   ├── synchronization/          # 同步机制
+│   │   ├── mod.zig               # 同步主模块
+│   │   ├── mutex.zig             # 互斥锁
+│   │   ├── rwlock.zig            # 读写锁
+│   │   ├── condition.zig         # 条件变量
+│   │   ├── semaphore.zig         # 信号量
+│   │   └── barrier.zig           # 屏障
+│   └── threading/                # 线程管理
+│       ├── mod.zig               # 线程主模块
+│       ├── thread_pool.zig       # 线程池
+│       ├── worker_thread.zig     # 工作线程
+│       ├── thread_local.zig      # 线程本地存储
+│       └── cpu_affinity.zig      # CPU亲和性
+└── diagnostics/                  # 诊断和指标
+    ├── mod.zig                   # 诊断主模块
+    ├── metrics/                  # 指标系统
+    │   ├── mod.zig               # 指标主模块
+    │   ├── metrics_collector.zig # 指标收集器
+    │   ├── metrics_registry.zig  # 指标注册表
+    │   ├── counter.zig           # 计数器
+    │   ├── gauge.zig             # 仪表
+    │   ├── histogram.zig         # 直方图
+    │   └── timer.zig             # 计时器
+    ├── tracing/                  # 分布式追踪
+    │   ├── mod.zig               # 追踪主模块
+    │   ├── tracing_system.zig    # 追踪系统
+    │   ├── span.zig              # Span
+    │   ├── trace_context.zig     # 追踪上下文
+    │   └── sampler.zig           # 采样器
+    └── profiling/                # 性能分析
+        ├── mod.zig               # 分析主模块
+        ├── cpu_profiler.zig      # CPU分析器
+        ├── memory_profiler.zig   # 内存分析器
+        ├── latency_profiler.zig  # 延迟分析器
+        └── throughput_profiler.zig # 吞吐量分析器
+```
+
+#### 🔌 扩展系统包设计
+```
+src/extensions/
+├── mod.zig                       # 扩展系统主模块
+├── extension_system.zig          # 扩展系统实现
+├── extension_loader.zig          # 扩展加载器
+├── extension_registry.zig        # 扩展注册表
+├── plugin_manager.zig            # 插件管理器
+├── interfaces/                   # 扩展接口
+│   ├── mod.zig                   # 接口主模块
+│   ├── scheduler_extension.zig   # 调度器扩展接口
+│   ├── mailbox_extension.zig     # 邮箱扩展接口
+│   ├── serializer_extension.zig  # 序列化器扩展接口
+│   ├── monitor_extension.zig     # 监控扩展接口
+│   └── security_extension.zig    # 安全扩展接口
+└── builtin/                      # 内置扩展
+    ├── mod.zig                   # 内置扩展主模块
+    ├── default_scheduler.zig     # 默认调度器
+    ├── default_mailbox.zig       # 默认邮箱
+    ├── default_serializer.zig    # 默认序列化器
+    └── default_monitor.zig       # 默认监控器
+```
+
+#### ⚙️ 配置管理包设计
+```
+src/config/
+├── mod.zig                       # 配置管理主模块
+├── configuration_manager.zig     # 配置管理器
+├── config_loader.zig             # 配置加载器
+├── config_validator.zig          # 配置验证器
+├── config_merger.zig             # 配置合并器
+├── sources/                      # 配置源
+│   ├── mod.zig                   # 配置源主模块
+│   ├── file_source.zig           # 文件配置源
+│   ├── env_source.zig            # 环境变量配置源
+│   ├── cli_source.zig            # 命令行配置源
+│   └── remote_source.zig         # 远程配置源
+├── formats/                      # 配置格式
+│   ├── mod.zig                   # 格式主模块
+│   ├── json_format.zig           # JSON格式
+│   ├── yaml_format.zig           # YAML格式
+│   ├── toml_format.zig           # TOML格式
+│   └── ini_format.zig            # INI格式
+└── schemas/                      # 配置模式
+    ├── mod.zig                   # 模式主模块
+    ├── runtime_schema.zig        # 运行时配置模式
+    ├── performance_schema.zig    # 性能配置模式
+    ├── security_schema.zig       # 安全配置模式
+    └── diagnostics_schema.zig    # 诊断配置模式
+```
+
+#### 🧪 测试框架包设计
+```
+src/testing/
+├── mod.zig                       # 测试框架主模块
+├── testing_framework.zig         # 测试框架实现
+├── runners/                      # 测试运行器
+│   ├── mod.zig                   # 运行器主模块
+│   ├── unit_test_runner.zig      # 单元测试运行器
+│   ├── integration_test_runner.zig # 集成测试运行器
+│   ├── performance_test_runner.zig # 性能测试运行器
+│   └── stress_test_runner.zig    # 压力测试运行器
+├── mocking/                      # Mock框架
+│   ├── mod.zig                   # Mock主模块
+│   ├── mock_factory.zig          # Mock工厂
+│   ├── mock_generator.zig        # Mock生成器
+│   ├── expectation_manager.zig   # 期望管理器
+│   └── verification_engine.zig   # 验证引擎
+├── fixtures/                     # 测试夹具
+│   ├── mod.zig                   # 夹具主模块
+│   ├── test_data_builder.zig     # 测试数据构建器
+│   ├── actor_fixtures.zig        # Actor夹具
+│   ├── message_fixtures.zig      # 消息夹具
+│   └── system_fixtures.zig       # 系统夹具
+└── assertions/                   # 断言引擎
+    ├── mod.zig                   # 断言主模块
+    ├── assertion_engine.zig      # 断言引擎
+    ├── matchers.zig              # 匹配器
+    ├── custom_assertions.zig     # 自定义断言
+    └── performance_assertions.zig # 性能断言
+```
+
+#### 🔍 质量保证包设计
+```
+src/quality/
+├── mod.zig                       # 质量保证主模块
+├── quality_assurance.zig         # 质量保证实现
+├── static_analysis/              # 静态分析
+│   ├── mod.zig                   # 静态分析主模块
+│   ├── static_analyzer.zig       # 静态分析器
+│   ├── code_complexity.zig       # 代码复杂度分析
+│   ├── dependency_analysis.zig   # 依赖分析
+│   └── security_analysis.zig     # 安全分析
+├── coverage/                     # 代码覆盖率
+│   ├── mod.zig                   # 覆盖率主模块
+│   ├── coverage_analyzer.zig     # 覆盖率分析器
+│   ├── line_coverage.zig         # 行覆盖率
+│   ├── branch_coverage.zig       # 分支覆盖率
+│   └── function_coverage.zig     # 函数覆盖率
+├── performance/                  # 性能分析
+│   ├── mod.zig                   # 性能分析主模块
+│   ├── performance_profiler.zig  # 性能分析器
+│   ├── bottleneck_detector.zig   # 瓶颈检测器
+│   ├── regression_detector.zig   # 回归检测器
+│   └── optimization_advisor.zig  # 优化建议器
+└── memory/                       # 内存分析
+    ├── mod.zig                   # 内存分析主模块
+    ├── memory_leak_detector.zig  # 内存泄漏检测器
+    ├── memory_usage_analyzer.zig # 内存使用分析器
+    ├── allocation_tracker.zig    # 分配跟踪器
+    └── fragmentation_analyzer.zig # 碎片分析器
+```
+
+#### 📈 可观测性包设计
+```
+src/observability/
+├── mod.zig                       # 可观测性主模块
+├── observability_system.zig      # 可观测性系统
+├── metrics/                      # 指标系统
+│   ├── mod.zig                   # 指标主模块
+│   ├── metrics_collector.zig     # 指标收集器
+│   ├── metrics_registry.zig      # 指标注册表
+│   ├── exporters/                # 指标导出器
+│   │   ├── mod.zig               # 导出器主模块
+│   │   ├── prometheus_exporter.zig # Prometheus导出器
+│   │   ├── influxdb_exporter.zig # InfluxDB导出器
+│   │   ├── statsd_exporter.zig   # StatsD导出器
+│   │   └── json_exporter.zig     # JSON导出器
+│   └── aggregators/              # 指标聚合器
+│       ├── mod.zig               # 聚合器主模块
+│       ├── sum_aggregator.zig    # 求和聚合器
+│       ├── avg_aggregator.zig    # 平均值聚合器
+│       ├── min_max_aggregator.zig # 最值聚合器
+│       └── percentile_aggregator.zig # 百分位聚合器
+├── tracing/                      # 分布式追踪
+│   ├── mod.zig                   # 追踪主模块
+│   ├── tracing_system.zig        # 追踪系统
+│   ├── span_processor.zig        # Span处理器
+│   ├── trace_exporter.zig        # 追踪导出器
+│   ├── samplers/                 # 采样器
+│   │   ├── mod.zig               # 采样器主模块
+│   │   ├── always_on_sampler.zig # 总是采样
+│   │   ├── always_off_sampler.zig # 从不采样
+│   │   ├── probability_sampler.zig # 概率采样
+│   │   └── rate_limiting_sampler.zig # 限速采样
+│   └── propagators/              # 上下文传播器
+│       ├── mod.zig               # 传播器主模块
+│       ├── trace_context_propagator.zig # 追踪上下文传播器
+│       ├── baggage_propagator.zig # 行李传播器
+│       └── composite_propagator.zig # 复合传播器
+├── logging/                      # 日志系统
+│   ├── mod.zig                   # 日志主模块
+│   ├── log_aggregator.zig        # 日志聚合器
+│   ├── log_formatter.zig         # 日志格式化器
+│   ├── log_filter.zig            # 日志过滤器
+│   ├── appenders/                # 日志输出器
+│   │   ├── mod.zig               # 输出器主模块
+│   │   ├── console_appender.zig  # 控制台输出器
+│   │   ├── file_appender.zig     # 文件输出器
+│   │   ├── rolling_file_appender.zig # 滚动文件输出器
+│   │   └── network_appender.zig  # 网络输出器
+│   └── structured/               # 结构化日志
+│       ├── mod.zig               # 结构化日志主模块
+│       ├── json_logger.zig       # JSON日志器
+│       ├── key_value_logger.zig  # 键值对日志器
+│       └── event_logger.zig      # 事件日志器
+└── health/                       # 健康检查
+    ├── mod.zig                   # 健康检查主模块
+    ├── health_checker.zig        # 健康检查器
+    ├── health_indicators/        # 健康指标
+    │   ├── mod.zig               # 指标主模块
+    │   ├── system_health.zig     # 系统健康指标
+    │   ├── memory_health.zig     # 内存健康指标
+    │   ├── cpu_health.zig        # CPU健康指标
+    │   └── network_health.zig    # 网络健康指标
+    └── endpoints/                # 健康检查端点
+        ├── mod.zig               # 端点主模块
+        ├── http_endpoint.zig     # HTTP端点
+        ├── tcp_endpoint.zig      # TCP端点
+        └── custom_endpoint.zig   # 自定义端点
+```
+
+#### 🛡️ 安全框架包设计
+```
+src/security/
+├── mod.zig                       # 安全框架主模块
+├── security_framework.zig        # 安全框架实现
+├── authentication/               # 身份验证
+│   ├── mod.zig                   # 认证主模块
+│   ├── authenticator.zig         # 认证器
+│   ├── credential_manager.zig    # 凭证管理器
+│   ├── token_manager.zig         # 令牌管理器
+│   └── session_manager.zig       # 会话管理器
+├── authorization/                # 授权
+│   ├── mod.zig                   # 授权主模块
+│   ├── access_controller.zig     # 访问控制器
+│   ├── permission_manager.zig    # 权限管理器
+│   ├── role_manager.zig          # 角色管理器
+│   └── policy_engine.zig         # 策略引擎
+├── cryptography/                 # 加密服务
+│   ├── mod.zig                   # 加密主模块
+│   ├── crypto_service.zig        # 加密服务
+│   ├── hash_functions.zig        # 哈希函数
+│   ├── symmetric_crypto.zig      # 对称加密
+│   ├── asymmetric_crypto.zig     # 非对称加密
+│   └── key_management.zig        # 密钥管理
+├── audit/                        # 审计日志
+│   ├── mod.zig                   # 审计主模块
+│   ├── audit_logger.zig          # 审计日志器
+│   ├── audit_event.zig           # 审计事件
+│   ├── audit_trail.zig           # 审计轨迹
+│   └── compliance_reporter.zig   # 合规报告器
+└── policies/                     # 安全策略
+    ├── mod.zig                   # 策略主模块
+    ├── security_policies.zig     # 安全策略
+    ├── access_policies.zig       # 访问策略
+    ├── data_policies.zig         # 数据策略
+    └── network_policies.zig      # 网络策略
+```
+
+#### 🔧 通用工具包设计
+```
+src/utils/
+├── mod.zig                       # 工具主模块
+├── collections/                  # 集合工具
+│   ├── mod.zig                   # 集合主模块
+│   ├── hash_map.zig              # 哈希映射
+│   ├── array_list.zig            # 动态数组
+│   ├── linked_list.zig           # 链表
+│   ├── priority_queue.zig        # 优先队列
+│   ├── ring_buffer.zig           # 环形缓冲区
+│   └── bloom_filter.zig          # 布隆过滤器
+├── algorithms/                   # 算法工具
+│   ├── mod.zig                   # 算法主模块
+│   ├── sorting.zig               # 排序算法
+│   ├── searching.zig             # 搜索算法
+│   ├── hashing.zig               # 哈希算法
+│   ├── compression.zig           # 压缩算法
+│   └── encoding.zig              # 编码算法
+├── math/                         # 数学工具
+│   ├── mod.zig                   # 数学主模块
+│   ├── statistics.zig            # 统计函数
+│   ├── random.zig                # 随机数生成
+│   ├── interpolation.zig         # 插值算法
+│   └── numerical.zig             # 数值计算
+├── time/                         # 时间工具
+│   ├── mod.zig                   # 时间主模块
+│   ├── timer.zig                 # 计时器
+│   ├── stopwatch.zig             # 秒表
+│   ├── scheduler.zig             # 时间调度器
+│   └── duration.zig              # 时间间隔
+├── io/                           # IO工具
+│   ├── mod.zig                   # IO主模块
+│   ├── file_utils.zig            # 文件工具
+│   ├── network_utils.zig         # 网络工具
+│   ├── serialization_utils.zig   # 序列化工具
+│   └── compression_utils.zig     # 压缩工具
+└── validation/                   # 验证工具
+    ├── mod.zig                   # 验证主模块
+    ├── validators.zig            # 验证器
+    ├── constraints.zig           # 约束条件
+    ├── sanitizers.zig            # 清理器
+    └── formatters.zig            # 格式化器
+```
+
+#### 📚 示例应用包设计
+```
+examples/
+├── README.md                     # 示例说明
+├── basic/                        # 基础示例
+│   ├── hello_world.zig           # Hello World示例
+│   ├── simple_actor.zig          # 简单Actor示例
+│   ├── message_passing.zig       # 消息传递示例
+│   └── actor_lifecycle.zig       # Actor生命周期示例
+├── intermediate/                 # 中级示例
+│   ├── ping_pong.zig             # Ping-Pong示例
+│   ├── producer_consumer.zig     # 生产者消费者示例
+│   ├── worker_pool.zig           # 工作池示例
+│   └── supervision_tree.zig      # 监督树示例
+├── advanced/                     # 高级示例
+│   ├── distributed_computing.zig # 分布式计算示例
+│   ├── high_frequency_trading.zig # 高频交易示例
+│   ├── game_server.zig           # 游戏服务器示例
+│   └── stream_processing.zig     # 流处理示例
+├── performance/                  # 性能示例
+│   ├── throughput_test.zig       # 吞吐量测试
+│   ├── latency_test.zig          # 延迟测试
+│   ├── scalability_test.zig      # 扩展性测试
+│   └── memory_efficiency.zig     # 内存效率测试
+└── integration/                  # 集成示例
+    ├── web_server.zig            # Web服务器集成
+    ├── database_integration.zig  # 数据库集成
+    ├── message_queue.zig         # 消息队列集成
+    └── microservices.zig         # 微服务架构示例
+```
+
+#### 🏗️ 构建系统包设计
+```
+build/
+├── build.zig                     # 主构建脚本
+├── modules/                      # 构建模块
+│   ├── core_build.zig            # 核心构建模块
+│   ├── test_build.zig            # 测试构建模块
+│   ├── benchmark_build.zig       # 基准测试构建模块
+│   ├── example_build.zig         # 示例构建模块
+│   └── package_build.zig         # 包构建模块
+├── tools/                        # 构建工具
+│   ├── code_generator.zig        # 代码生成器
+│   ├── dependency_analyzer.zig   # 依赖分析器
+│   ├── version_manager.zig       # 版本管理器
+│   └── release_manager.zig       # 发布管理器
+├── configs/                      # 构建配置
+│   ├── debug.zig                 # 调试配置
+│   ├── release.zig               # 发布配置
+│   ├── benchmark.zig             # 基准测试配置
+│   └── cross_compile.zig         # 交叉编译配置
+└── scripts/                      # 构建脚本
+    ├── setup.sh                  # 环境设置脚本
+    ├── clean.sh                  # 清理脚本
+    ├── test.sh                   # 测试脚本
+    └── package.sh                # 打包脚本
+```
+
+#### 📦 包管理包设计
+```
+packaging/
+├── package_manager.zig           # 包管理器实现
+├── package_definition.zig        # 包定义
+├── dependency_resolver.zig       # 依赖解析器
+├── version_resolver.zig          # 版本解析器
+├── repositories/                 # 包仓库
+│   ├── local_repository.zig      # 本地仓库
+│   ├── remote_repository.zig     # 远程仓库
+│   ├── cache_repository.zig      # 缓存仓库
+│   └── mirror_repository.zig     # 镜像仓库
+├── formats/                      # 包格式
+│   ├── zactor_package.zig        # ZActor包格式
+│   ├── tar_package.zig           # TAR包格式
+│   ├── zip_package.zig           # ZIP包格式
+│   └── custom_package.zig        # 自定义包格式
+└── metadata/                     # 包元数据
+    ├── package_manifest.zig      # 包清单
+    ├── dependency_graph.zig      # 依赖图
+    ├── version_history.zig       # 版本历史
+    └── compatibility_matrix.zig  # 兼容性矩阵
+```
+
+#### 🚀 部署配置包设计
+```
+deployment/
+├── deployment_manager.zig        # 部署管理器
+├── strategies/                   # 部署策略
+│   ├── blue_green.zig            # 蓝绿部署
+│   ├── rolling.zig               # 滚动部署
+│   ├── canary.zig                # 金丝雀部署
+│   └── a_b_testing.zig           # A/B测试部署
+├── environments/                 # 环境配置
+│   ├── development.zig           # 开发环境
+│   ├── testing.zig               # 测试环境
+│   ├── staging.zig               # 预发布环境
+│   └── production.zig            # 生产环境
+├── platforms/                    # 平台支持
+│   ├── kubernetes.zig            # Kubernetes部署
+│   ├── docker.zig                # Docker部署
+│   ├── systemd.zig               # Systemd部署
+│   └── cloud_native.zig          # 云原生部署
+└── monitoring/                   # 部署监控
+    ├── health_checks.zig         # 健康检查
+    ├── rollback_triggers.zig     # 回滚触发器
+    ├── performance_monitors.zig  # 性能监控
+    └── alert_managers.zig        # 告警管理
+```
+
+#### 🔧 运维脚本包设计
+```
+operations/
+├── automation/                   # 自动化脚本
+│   ├── auto_scaler.zig           # 自动扩缩容
+│   ├── self_healing.zig          # 自愈系统
+│   ├── performance_tuner.zig     # 性能调优
+│   └── resource_manager.zig      # 资源管理
+├── monitoring/                   # 监控脚本
+│   ├── system_monitor.zig        # 系统监控
+│   ├── application_monitor.zig   # 应用监控
+│   ├── network_monitor.zig       # 网络监控
+│   └── security_monitor.zig      # 安全监控
+├── maintenance/                  # 维护脚本
+│   ├── backup_manager.zig        # 备份管理
+│   ├── log_rotator.zig           # 日志轮转
+│   ├── cache_cleaner.zig         # 缓存清理
+│   └── database_maintenance.zig  # 数据库维护
+└── troubleshooting/              # 故障排除
+    ├── diagnostic_tools.zig      # 诊断工具
+    ├── performance_analyzer.zig  # 性能分析器
+    ├── memory_analyzer.zig       # 内存分析器
+    └── network_analyzer.zig      # 网络分析器
+```
+
+### 📋 包依赖关系图
+
+```
+Application Layer
+    ↓ depends on
+API Layer
+    ↓ depends on
+Core Layer
+    ↓ depends on
+Component Layer
+    ↓ depends on
+Infrastructure Layer
+
+Extensions ←→ All Layers (bidirectional)
+Config → All Layers (configuration)
+Testing → All Layers (testing)
+Quality → All Layers (quality assurance)
+Observability → All Layers (monitoring)
+Security → All Layers (security)
+Utils → All Layers (utilities)
+```
+
+这个完整的包结构设计确保了：
+
+1. **清晰的分层**: 每一层都有明确的职责和边界
+2. **模块化**: 每个包都是独立的功能模块
+3. **可扩展性**: 通过扩展系统支持插件化
+4. **可测试性**: 完整的测试框架支持
+5. **可维护性**: 清晰的依赖关系和接口定义
+6. **高内聚低耦合**: 相关功能聚合，模块间松耦合
+
+### 📦 核心模块详细设计
+
+#### 1. Runtime System (运行时系统)
+```zig
+// src/runtime/mod.zig
+pub const RuntimeSystem = struct {
+    // 高内聚：运行时相关的所有功能
+    lifecycle_manager: LifecycleManager,
+    resource_manager: ResourceManager,
+    configuration_manager: ConfigurationManager,
+
+    // 低耦合：通过接口依赖其他模块
+    scheduler: *SchedulerInterface,
+    supervisor: *SupervisorInterface,
+    diagnostics: *DiagnosticsInterface,
+
+    pub const Interface = struct {
+        // 最小化对外接口
+        start: *const fn(*RuntimeSystem) RuntimeError!void,
+        stop: *const fn(*RuntimeSystem) RuntimeError!void,
+        getStatus: *const fn(*RuntimeSystem) RuntimeStatus,
+        configure: *const fn(*RuntimeSystem, RuntimeConfig) RuntimeError!void,
+    };
+};
+
+// 生命周期管理 - 高内聚
+const LifecycleManager = struct {
+    state: AtomicEnum(LifecycleState),
+    startup_hooks: ArrayList(StartupHook),
+    shutdown_hooks: ArrayList(ShutdownHook),
+
+    pub fn registerStartupHook(self: *Self, hook: StartupHook) !void;
+    pub fn registerShutdownHook(self: *Self, hook: ShutdownHook) !void;
+    pub fn executeStartupSequence(self: *Self) !void;
+    pub fn executeShutdownSequence(self: *Self) !void;
+};
+```
+
+#### 2. Scheduler Engine (调度引擎)
+```zig
+// src/scheduler/mod.zig
+pub const SchedulerEngine = struct {
+    // 高内聚：调度相关的所有逻辑
+    work_stealing_core: WorkStealingCore,
+    load_balancer: LoadBalancer,
+    affinity_manager: AffinityManager,
+
+    // 低耦合：策略模式支持不同调度算法
+    strategy: *SchedulingStrategyInterface,
+
+    pub const Interface = struct {
+        submit: *const fn(*SchedulerEngine, Task) SchedulerError!void,
+        submitBatch: *const fn(*SchedulerEngine, []Task) SchedulerError!u32,
+        getMetrics: *const fn(*SchedulerEngine) SchedulerMetrics,
+        configure: *const fn(*SchedulerEngine, SchedulerConfig) SchedulerError!void,
+    };
+};
+
+// 调度策略接口 - 支持插件化
+pub const SchedulingStrategyInterface = struct {
+    vtable: *const VTable,
+
+    const VTable = struct {
+        selectWorker: *const fn(*SchedulingStrategyInterface, Task) u32,
+        balanceLoad: *const fn(*SchedulingStrategyInterface) void,
+        adaptToLoad: *const fn(*SchedulingStrategyInterface, LoadMetrics) void,
+    };
+};
+
+// 具体策略实现
+pub const WorkStealingStrategy = struct {
+    strategy: SchedulingStrategyInterface,
+    // 策略特定的数据和逻辑
+};
+
+pub const PriorityBasedStrategy = struct {
+    strategy: SchedulingStrategyInterface,
+    // 策略特定的数据和逻辑
+};
+```
+
+#### 3. Actor Component (Actor组件)
+```zig
+// src/actor/mod.zig
+pub const ActorComponent = struct {
+    // 高内聚：Actor相关的所有功能
+    actor_factory: ActorFactory,
+    behavior_registry: BehaviorRegistry,
+    lifecycle_hooks: LifecycleHooks,
+
+    // 低耦合：依赖抽象接口
+    mailbox_provider: *MailboxProviderInterface,
+    message_dispatcher: *MessageDispatcherInterface,
+
+    pub const Interface = struct {
+        createActor: *const fn(*ActorComponent, ActorSpec) ActorError!ActorRef,
+        destroyActor: *const fn(*ActorComponent, ActorRef) ActorError!void,
+        sendMessage: *const fn(*ActorComponent, ActorRef, Message) ActorError!void,
+        getActorInfo: *const fn(*ActorComponent, ActorRef) ?ActorInfo,
+    };
+};
+
+// Actor工厂 - 支持不同类型的Actor创建
+const ActorFactory = struct {
+    // 注册的Actor类型
+    actor_types: HashMap([]const u8, ActorTypeInfo),
+
+    pub fn registerActorType(self: *Self, comptime T: type) !void {
+        const type_info = ActorTypeInfo{
+            .name = @typeName(T),
+            .size = @sizeOf(T),
+            .create_fn = createActorOfType(T),
+            .destroy_fn = destroyActorOfType(T),
+        };
+        try self.actor_types.put(type_info.name, type_info);
+    }
+
+    pub fn createActor(self: *Self, spec: ActorSpec) !ActorRef;
+};
+```
+
+#### 4. Message Component (消息组件)
+```zig
+// src/message/mod.zig
+pub const MessageComponent = struct {
+    // 高内聚：消息处理的所有功能
+    message_factory: MessageFactory,
+    serialization_engine: SerializationEngine,
+    routing_engine: RoutingEngine,
+
+    // 低耦合：可插拔的序列化器
+    serializers: HashMap([]const u8, *SerializerInterface),
+
+    pub const Interface = struct {
+        createMessage: *const fn(*MessageComponent, MessageSpec) MessageError!Message,
+        routeMessage: *const fn(*MessageComponent, Message, ActorRef) MessageError!void,
+        serializeMessage: *const fn(*MessageComponent, Message) MessageError![]u8,
+        deserializeMessage: *const fn(*MessageComponent, []u8) MessageError!Message,
+    };
+};
+
+// 序列化器接口 - 支持不同序列化格式
+pub const SerializerInterface = struct {
+    vtable: *const VTable,
+
+    const VTable = struct {
+        serialize: *const fn(*SerializerInterface, anytype) SerializationError![]u8,
+        deserialize: *const fn(*SerializerInterface, []u8, type) SerializationError!anytype,
+        getFormatName: *const fn(*SerializerInterface) []const u8,
+    };
+};
+
+// 具体序列化器实现
+pub const BinarySerializer = struct {
+    serializer: SerializerInterface,
+    // 二进制序列化逻辑
+};
+
+pub const JsonSerializer = struct {
+    serializer: SerializerInterface,
+    // JSON序列化逻辑
+};
+```
+
+#### 5. Mailbox Component (邮箱组件)
+```zig
+// src/mailbox/mod.zig
+pub const MailboxComponent = struct {
+    // 高内聚：邮箱管理的所有功能
+    mailbox_factory: MailboxFactory,
+    mailbox_pool: MailboxPool,
+    performance_monitor: PerformanceMonitor,
+
+    // 低耦合：支持不同邮箱实现
+    mailbox_types: HashMap([]const u8, *MailboxTypeInterface),
+
+    pub const Interface = struct {
+        createMailbox: *const fn(*MailboxComponent, MailboxSpec) MailboxError!Mailbox,
+        destroyMailbox: *const fn(*MailboxComponent, Mailbox) MailboxError!void,
+        getMailboxMetrics: *const fn(*MailboxComponent, Mailbox) MailboxMetrics,
+        optimizeMailbox: *const fn(*MailboxComponent, Mailbox) MailboxError!void,
+    };
+};
+
+// 邮箱类型接口 - 支持不同邮箱实现
+pub const MailboxTypeInterface = struct {
+    vtable: *const VTable,
+
+    const VTable = struct {
+        create: *const fn(*MailboxTypeInterface, MailboxConfig) MailboxError!*anyopaque,
+        destroy: *const fn(*MailboxTypeInterface, *anyopaque) void,
+        send: *const fn(*MailboxTypeInterface, *anyopaque, Message) MailboxError!void,
+        receive: *const fn(*MailboxTypeInterface, *anyopaque) ?Message,
+        getMetrics: *const fn(*MailboxTypeInterface, *anyopaque) MailboxMetrics,
+    };
+};
+```
+
+### 🔌 插件化扩展系统
+
+#### 扩展点接口设计
+```zig
+// src/extensions/mod.zig
+pub const ExtensionSystem = struct {
+    // 注册的扩展点
+    extension_points: HashMap([]const u8, ExtensionPoint),
+
+    // 已加载的扩展
+    loaded_extensions: HashMap([]const u8, LoadedExtension),
+
+    pub fn registerExtensionPoint(self: *Self, name: []const u8, interface: anytype) !void;
+    pub fn loadExtension(self: *Self, spec: ExtensionSpec) !void;
+    pub fn unloadExtension(self: *Self, name: []const u8) !void;
+    pub fn getExtension(self: *Self, name: []const u8, comptime T: type) ?*T;
+};
+
+// 扩展点定义
+pub const ExtensionPoint = struct {
+    name: []const u8,
+    interface_type: type,
+    required: bool,
+    multiple: bool, // 是否支持多个实现
+};
+
+// 预定义扩展点
+pub const EXTENSION_POINTS = struct {
+    pub const SCHEDULER_STRATEGY = "scheduler.strategy";
+    pub const MESSAGE_SERIALIZER = "message.serializer";
+    pub const MAILBOX_TYPE = "mailbox.type";
+    pub const DIAGNOSTICS_COLLECTOR = "diagnostics.collector";
+    pub const PERFORMANCE_MONITOR = "performance.monitor";
+};
+```
+
+### 🎛️ 配置管理系统
+
+#### 分层配置架构
+```zig
+// src/config/mod.zig
+pub const ConfigurationManager = struct {
+    // 配置层次：默认 < 文件 < 环境变量 < 运行时
+    default_config: DefaultConfig,
+    file_config: ?FileConfig,
+    env_config: EnvConfig,
+    runtime_config: RuntimeConfig,
+
+    // 配置监听器
+    listeners: ArrayList(ConfigChangeListener),
+
+    pub fn get(self: *Self, comptime T: type, key: []const u8) T;
+    pub fn set(self: *Self, key: []const u8, value: anytype) !void;
+    pub fn addListener(self: *Self, listener: ConfigChangeListener) !void;
+    pub fn reload(self: *Self) !void;
+};
+
+// 配置模式定义
+pub const ConfigSchema = struct {
+    // 运行时配置
+    pub const Runtime = struct {
+        max_actors: u32 = 10000,
+        scheduler_threads: u32 = 0, // 0 = auto-detect
+        enable_work_stealing: bool = true,
+        enable_numa_awareness: bool = false,
+    };
+
+    // 性能配置
+    pub const Performance = struct {
+        mailbox_capacity: u32 = 1024,
+        batch_size: u32 = 100,
+        spin_cycles: u32 = 1000,
+        enable_prefetch: bool = true,
+    };
+
+    // 诊断配置
+    pub const Diagnostics = struct {
+        enable_metrics: bool = true,
+        enable_tracing: bool = false,
+        metrics_interval_ms: u64 = 1000,
+        trace_buffer_size: u32 = 10000,
+    };
+};
+```
+
+### 🔄 依赖注入容器
+
+#### IoC容器设计
+```zig
+// src/di/mod.zig
+pub const DIContainer = struct {
+    // 服务注册表
+    services: HashMap([]const u8, ServiceDescriptor),
+
+    // 单例实例缓存
+    singletons: HashMap([]const u8, *anyopaque),
+
+    // 作用域管理
+    scopes: HashMap([]const u8, Scope),
+
+    pub fn registerSingleton(self: *Self, comptime T: type, instance: *T) !void {
+        const descriptor = ServiceDescriptor{
+            .service_type = T,
+            .lifetime = .singleton,
+            .factory = null,
+            .instance = instance,
+        };
+        try self.services.put(@typeName(T), descriptor);
+    }
+
+    pub fn registerTransient(self: *Self, comptime T: type, factory: FactoryFn(T)) !void {
+        const descriptor = ServiceDescriptor{
+            .service_type = T,
+            .lifetime = .transient,
+            .factory = factory,
+            .instance = null,
+        };
+        try self.services.put(@typeName(T), descriptor);
+    }
+
+    pub fn resolve(self: *Self, comptime T: type) !*T {
+        const service_name = @typeName(T);
+        const descriptor = self.services.get(service_name) orelse return error.ServiceNotRegistered;
+
+        switch (descriptor.lifetime) {
+            .singleton => {
+                if (self.singletons.get(service_name)) |instance| {
+                    return @ptrCast(*T, @alignCast(@alignOf(T), instance));
+                } else {
+                    const instance = try descriptor.factory.?(self);
+                    try self.singletons.put(service_name, instance);
+                    return @ptrCast(*T, instance);
+                }
+            },
+            .transient => {
+                return @ptrCast(*T, try descriptor.factory.?(self));
+            },
+            .scoped => {
+                // 作用域实例管理
+                return self.resolveScoped(T, service_name);
+            },
+        }
+    }
+};
+
+// 服务描述符
+const ServiceDescriptor = struct {
+    service_type: type,
+    lifetime: ServiceLifetime,
+    factory: ?FactoryFn,
+    instance: ?*anyopaque,
+};
+
+const ServiceLifetime = enum {
+    singleton,  // 单例
+    transient,  // 瞬态
+    scoped,     // 作用域
+};
+```
+
+### 📡 事件驱动架构
+
+#### 事件总线设计
+```zig
+// src/events/mod.zig
+pub const EventBus = struct {
+    // 事件订阅者映射
+    subscribers: HashMap([]const u8, ArrayList(EventHandler)),
+
+    // 事件队列（异步处理）
+    event_queue: LockFreeQueue(Event),
+
+    // 事件处理器线程池
+    handler_pool: ThreadPool,
+
+    pub fn subscribe(self: *Self, comptime EventType: type, handler: EventHandler) !void {
+        const event_name = @typeName(EventType);
+        var handlers = self.subscribers.getOrPut(event_name) catch ArrayList(EventHandler).init(self.allocator);
+        try handlers.append(handler);
+        try self.subscribers.put(event_name, handlers);
+    }
+
+    pub fn publish(self: *Self, event: anytype) !void {
+        const event_name = @typeName(@TypeOf(event));
+
+        // 同步处理高优先级事件
+        if (isHighPriorityEvent(event)) {
+            try self.handleEventSync(event_name, event);
+        } else {
+            // 异步处理普通事件
+            const boxed_event = try self.boxEvent(event);
+            try self.event_queue.push(boxed_event);
+        }
+    }
+
+    pub fn publishAsync(self: *Self, event: anytype) !void {
+        const boxed_event = try self.boxEvent(event);
+        try self.event_queue.push(boxed_event);
+    }
+
+    fn handleEventSync(self: *Self, event_name: []const u8, event: anytype) !void {
+        if (self.subscribers.get(event_name)) |handlers| {
+            for (handlers.items) |handler| {
+                try handler.handle(event);
+            }
+        }
+    }
+};
+
+// 事件处理器接口
+pub const EventHandler = struct {
+    vtable: *const VTable,
+
+    const VTable = struct {
+        handle: *const fn(*EventHandler, anytype) EventError!void,
+        canHandle: *const fn(*EventHandler, []const u8) bool,
+        getPriority: *const fn(*EventHandler) EventPriority,
+    };
+};
+
+// 预定义系统事件
+pub const SystemEvents = struct {
+    pub const ActorCreated = struct {
+        actor_id: ActorId,
+        actor_type: []const u8,
+        timestamp: i64,
+    };
+
+    pub const ActorDestroyed = struct {
+        actor_id: ActorId,
+        reason: DestroyReason,
+        timestamp: i64,
+    };
+
+    pub const MessageSent = struct {
+        from: ActorId,
+        to: ActorId,
+        message_type: []const u8,
+        timestamp: i64,
+    };
+
+    pub const SystemStarted = struct {
+        system_name: []const u8,
+        config: SystemConfig,
+        timestamp: i64,
+    };
+
+    pub const PerformanceAlert = struct {
+        metric_name: []const u8,
+        current_value: f64,
+        threshold: f64,
+        severity: AlertSeverity,
+        timestamp: i64,
+    };
+};
+```
+
+### 🔧 模块间通信协议
+
+#### 标准化接口协议
+```zig
+// src/protocols/mod.zig
+pub const ModuleProtocol = struct {
+    // 模块标识
+    module_id: []const u8,
+    version: Version,
+
+    // 依赖声明
+    dependencies: []Dependency,
+
+    // 提供的服务
+    provided_services: []ServiceInterface,
+
+    // 需要的服务
+    required_services: []ServiceRequirement,
+
+    // 生命周期钩子
+    lifecycle_hooks: LifecycleHooks,
+};
+
+// 服务接口定义
+pub const ServiceInterface = struct {
+    name: []const u8,
+    interface_type: type,
+    implementation: *anyopaque,
+    metadata: ServiceMetadata,
+};
+
+// 服务需求定义
+pub const ServiceRequirement = struct {
+    name: []const u8,
+    interface_type: type,
+    optional: bool,
+    min_version: ?Version,
+    max_version: ?Version,
+};
+
+// 模块生命周期
+pub const LifecycleHooks = struct {
+    on_load: ?*const fn(*ModuleContext) ModuleError!void,
+    on_start: ?*const fn(*ModuleContext) ModuleError!void,
+    on_stop: ?*const fn(*ModuleContext) ModuleError!void,
+    on_unload: ?*const fn(*ModuleContext) ModuleError!void,
+    on_configure: ?*const fn(*ModuleContext, ModuleConfig) ModuleError!void,
+};
+```
+
+### 🎯 模块化组装
+
+#### 系统组装器
+```zig
+// src/assembly/mod.zig
+pub const SystemAssembler = struct {
+    di_container: DIContainer,
+    event_bus: EventBus,
+    module_loader: ModuleLoader,
+    config_manager: ConfigurationManager,
+
+    pub fn assemble(self: *Self, assembly_spec: AssemblySpec) !ZActorSystem {
+        // 1. 加载配置
+        try self.loadConfiguration(assembly_spec.config_sources);
+
+        // 2. 注册核心服务
+        try self.registerCoreServices();
+
+        // 3. 加载模块
+        for (assembly_spec.modules) |module_spec| {
+            try self.loadModule(module_spec);
+        }
+
+        // 4. 解析依赖
+        try self.resolveDependencies();
+
+        // 5. 初始化系统
+        const system = try self.createSystem();
+
+        // 6. 启动模块
+        try self.startModules();
+
+        return system;
+    }
+
+    fn registerCoreServices(self: *Self) !void {
+        // 注册核心服务
+        try self.di_container.registerSingleton(EventBus, &self.event_bus);
+        try self.di_container.registerSingleton(ConfigurationManager, &self.config_manager);
+
+        // 注册工厂服务
+        try self.di_container.registerTransient(ActorFactory, createActorFactory);
+        try self.di_container.registerTransient(MessageFactory, createMessageFactory);
+        try self.di_container.registerTransient(MailboxFactory, createMailboxFactory);
+    }
+
+    fn loadModule(self: *Self, spec: ModuleSpec) !void {
+        const module = try self.module_loader.load(spec);
+
+        // 注册模块提供的服务
+        for (module.protocol.provided_services) |service| {
+            try self.di_container.registerService(service);
+        }
+
+        // 执行模块加载钩子
+        if (module.protocol.lifecycle_hooks.on_load) |hook| {
+            const context = ModuleContext{
+                .di_container = &self.di_container,
+                .event_bus = &self.event_bus,
+                .config = self.config_manager.getModuleConfig(module.protocol.module_id),
+            };
+            try hook(&context);
+        }
+    }
+};
+
+// 组装规范
+pub const AssemblySpec = struct {
+    config_sources: []ConfigSource,
+    modules: []ModuleSpec,
+    extensions: []ExtensionSpec,
+    performance_profile: PerformanceProfile,
+};
+
+// 性能配置文件
+pub const PerformanceProfile = enum {
+    development,    // 开发模式：启用调试、详细日志
+    testing,        // 测试模式：启用指标收集、模拟
+    production,     // 生产模式：最大性能优化
+    benchmarking,   // 基准测试模式：最小开销
+
+    pub fn getConfig(self: PerformanceProfile) SystemConfig {
+        return switch (self) {
+            .development => SystemConfig{
+                .enable_debug = true,
+                .enable_metrics = true,
+                .enable_tracing = true,
+                .log_level = .debug,
+            },
+            .production => SystemConfig{
+                .enable_debug = false,
+                .enable_metrics = false,
+                .enable_tracing = false,
+                .log_level = .warn,
+                .optimize_for_throughput = true,
+            },
+            .benchmarking => SystemConfig{
+                .enable_debug = false,
+                .enable_metrics = false,
+                .enable_tracing = false,
+                .log_level = .err,
+                .optimize_for_latency = true,
+            },
+            else => SystemConfig.default(),
+        };
+    }
+};
+```
+
+### 🧪 测试架构设计
+
+#### 分层测试策略
+```zig
+// src/testing/mod.zig
+pub const TestingFramework = struct {
+    // 测试运行器
+    unit_test_runner: UnitTestRunner,
+    integration_test_runner: IntegrationTestRunner,
+    performance_test_runner: PerformanceTestRunner,
+
+    // 测试工具
+    mock_factory: MockFactory,
+    test_data_builder: TestDataBuilder,
+    assertion_engine: AssertionEngine,
+
+    pub fn runAllTests(self: *Self) !TestResults {
+        var results = TestResults.init(self.allocator);
+
+        // 1. 单元测试
+        const unit_results = try self.unit_test_runner.runAll();
+        results.merge(unit_results);
+
+        // 2. 集成测试
+        const integration_results = try self.integration_test_runner.runAll();
+        results.merge(integration_results);
+
+        // 3. 性能测试
+        const perf_results = try self.performance_test_runner.runAll();
+        results.merge(perf_results);
+
+        return results;
+    }
+};
+
+// Mock工厂 - 支持依赖隔离测试
+pub const MockFactory = struct {
+    mocks: HashMap([]const u8, *anyopaque),
+
+    pub fn createMock(self: *Self, comptime T: type) !*MockOf(T) {
+        const mock = try self.allocator.create(MockOf(T));
+        mock.* = MockOf(T).init();
+        try self.mocks.put(@typeName(T), mock);
+        return mock;
+    }
+
+    pub fn MockOf(comptime T: type) type {
+        return struct {
+            const Self = @This();
+
+            // 记录调用
+            call_history: ArrayList(MethodCall),
+
+            // 预设返回值
+            return_values: HashMap([]const u8, anytype),
+
+            pub fn expectCall(self: *Self, method: []const u8, args: anytype) *Self {
+                // 设置期望调用
+                return self;
+            }
+
+            pub fn willReturn(self: *Self, method: []const u8, value: anytype) *Self {
+                // 设置返回值
+                return self;
+            }
+
+            pub fn verify(self: *Self) !void {
+                // 验证期望调用
+            }
+        };
+    }
+};
+```
+
+### 🔍 质量保证体系
+
+#### 代码质量检查
+```zig
+// src/quality/mod.zig
+pub const QualityAssurance = struct {
+    // 静态分析工具
+    static_analyzer: StaticAnalyzer,
+
+    // 代码覆盖率
+    coverage_analyzer: CoverageAnalyzer,
+
+    // 性能分析器
+    performance_profiler: PerformanceProfiler,
+
+    // 内存泄漏检测
+    memory_leak_detector: MemoryLeakDetector,
+
+    pub fn runQualityChecks(self: *Self) !QualityReport {
+        var report = QualityReport.init(self.allocator);
+
+        // 1. 静态分析
+        const static_issues = try self.static_analyzer.analyze();
+        report.addStaticIssues(static_issues);
+
+        // 2. 代码覆盖率
+        const coverage = try self.coverage_analyzer.getCoverage();
+        report.setCoverage(coverage);
+
+        // 3. 性能分析
+        const perf_metrics = try self.performance_profiler.getMetrics();
+        report.setPerformanceMetrics(perf_metrics);
+
+        // 4. 内存检查
+        const memory_issues = try self.memory_leak_detector.check();
+        report.addMemoryIssues(memory_issues);
+
+        return report;
+    }
+};
+
+// 持续集成支持
+pub const ContinuousIntegration = struct {
+    // 构建管道
+    build_pipeline: BuildPipeline,
+
+    // 测试管道
+    test_pipeline: TestPipeline,
+
+    // 部署管道
+    deployment_pipeline: DeploymentPipeline,
+
+    pub fn runPipeline(self: *Self, trigger: PipelineTrigger) !PipelineResult {
+        // 1. 构建阶段
+        const build_result = try self.build_pipeline.run();
+        if (!build_result.success) return PipelineResult.failed(build_result.error);
+
+        // 2. 测试阶段
+        const test_result = try self.test_pipeline.run();
+        if (!test_result.success) return PipelineResult.failed(test_result.error);
+
+        // 3. 质量检查
+        const quality_result = try self.runQualityGate();
+        if (!quality_result.passed) return PipelineResult.failed(quality_result.issues);
+
+        // 4. 部署阶段（如果是发布触发）
+        if (trigger == .release) {
+            const deploy_result = try self.deployment_pipeline.run();
+            if (!deploy_result.success) return PipelineResult.failed(deploy_result.error);
+        }
+
+        return PipelineResult.success();
+    }
+};
+```
+
+### 📈 监控和可观测性
+
+#### 全面监控系统
+```zig
+// src/observability/mod.zig
+pub const ObservabilitySystem = struct {
+    // 指标收集
+    metrics_collector: MetricsCollector,
+
+    // 分布式追踪
+    tracing_system: TracingSystem,
+
+    // 日志聚合
+    log_aggregator: LogAggregator,
+
+    // 健康检查
+    health_checker: HealthChecker,
+
+    pub fn initialize(self: *Self, config: ObservabilityConfig) !void {
+        try self.metrics_collector.start(config.metrics);
+        try self.tracing_system.start(config.tracing);
+        try self.log_aggregator.start(config.logging);
+        try self.health_checker.start(config.health);
+    }
+
+    pub fn getSystemHealth(self: *Self) SystemHealth {
+        return SystemHealth{
+            .overall_status = self.health_checker.getOverallStatus(),
+            .component_health = self.health_checker.getComponentHealth(),
+            .performance_metrics = self.metrics_collector.getCurrentMetrics(),
+            .active_traces = self.tracing_system.getActiveTraces(),
+        };
+    }
+};
+
+// 指标收集器
+pub const MetricsCollector = struct {
+    // 不同类型的指标
+    counters: HashMap([]const u8, AtomicU64),
+    gauges: HashMap([]const u8, AtomicF64),
+    histograms: HashMap([]const u8, Histogram),
+    timers: HashMap([]const u8, Timer),
+
+    // 指标导出器
+    exporters: ArrayList(*MetricsExporter),
+
+    pub fn recordCounter(self: *Self, name: []const u8, value: u64) void {
+        if (self.counters.getPtr(name)) |counter| {
+            _ = counter.fetchAdd(value, .monotonic);
+        }
+    }
+
+    pub fn recordGauge(self: *Self, name: []const u8, value: f64) void {
+        if (self.gauges.getPtr(name)) |gauge| {
+            gauge.store(value, .monotonic);
+        }
+    }
+
+    pub fn recordHistogram(self: *Self, name: []const u8, value: f64) void {
+        if (self.histograms.getPtr(name)) |histogram| {
+            histogram.record(value);
+        }
+    }
+
+    pub fn startTimer(self: *Self, name: []const u8) TimerHandle {
+        return TimerHandle{
+            .collector = self,
+            .name = name,
+            .start_time = std.time.nanoTimestamp(),
+        };
+    }
+};
+
+// 分布式追踪
+pub const TracingSystem = struct {
+    // 追踪上下文
+    trace_context: ThreadLocal(TraceContext),
+
+    // Span存储
+    span_storage: SpanStorage,
+
+    // 采样器
+    sampler: TracingSampler,
+
+    pub fn startSpan(self: *Self, operation_name: []const u8) Span {
+        const parent_context = self.trace_context.get();
+        const span_id = generateSpanId();
+        const trace_id = parent_context.trace_id orelse generateTraceId();
+
+        const span = Span{
+            .trace_id = trace_id,
+            .span_id = span_id,
+            .parent_span_id = parent_context.span_id,
+            .operation_name = operation_name,
+            .start_time = std.time.nanoTimestamp(),
+            .tags = HashMap([]const u8, []const u8).init(self.allocator),
+        };
+
+        // 更新追踪上下文
+        self.trace_context.set(TraceContext{
+            .trace_id = trace_id,
+            .span_id = span_id,
+        });
+
+        return span;
+    }
+
+    pub fn finishSpan(self: *Self, span: *Span) void {
+        span.end_time = std.time.nanoTimestamp();
+
+        // 采样决策
+        if (self.sampler.shouldSample(span)) {
+            self.span_storage.store(span.*);
+        }
+
+        // 恢复父级上下文
+        if (span.parent_span_id) |parent_id| {
+            self.trace_context.set(TraceContext{
+                .trace_id = span.trace_id,
+                .span_id = parent_id,
+            });
+        } else {
+            self.trace_context.clear();
+        }
+    }
+};
+```
+
+### 🛡️ 安全和可靠性
+
+#### 安全框架
+```zig
+// src/security/mod.zig
+pub const SecurityFramework = struct {
+    // 访问控制
+    access_controller: AccessController,
+
+    // 审计日志
+    audit_logger: AuditLogger,
+
+    // 加密服务
+    crypto_service: CryptoService,
+
+    // 安全策略
+    security_policies: SecurityPolicies,
+
+    pub fn checkPermission(self: *Self, subject: Subject, resource: Resource, action: Action) !bool {
+        // 1. 身份验证
+        if (!try self.access_controller.authenticate(subject)) {
+            try self.audit_logger.logFailedAuthentication(subject);
+            return false;
+        }
+
+        // 2. 授权检查
+        if (!try self.access_controller.authorize(subject, resource, action)) {
+            try self.audit_logger.logUnauthorizedAccess(subject, resource, action);
+            return false;
+        }
+
+        // 3. 记录成功访问
+        try self.audit_logger.logSuccessfulAccess(subject, resource, action);
+        return true;
+    }
+};
+
+// 可靠性保证
+pub const ReliabilityFramework = struct {
+    // 故障检测
+    failure_detector: FailureDetector,
+
+    // 自动恢复
+    auto_recovery: AutoRecovery,
+
+    // 降级策略
+    degradation_manager: DegradationManager,
+
+    // 断路器
+    circuit_breakers: HashMap([]const u8, CircuitBreaker),
+
+    pub fn handleFailure(self: *Self, failure: SystemFailure) !void {
+        // 1. 检测故障类型
+        const failure_type = self.failure_detector.classifyFailure(failure);
+
+        // 2. 触发断路器
+        if (self.circuit_breakers.getPtr(failure.component)) |breaker| {
+            breaker.recordFailure();
+        }
+
+        // 3. 尝试自动恢复
+        if (self.auto_recovery.canRecover(failure_type)) {
+            try self.auto_recovery.recover(failure);
+        } else {
+            // 4. 启动降级策略
+            try self.degradation_manager.degrade(failure.component);
+        }
+    }
+};
+```
+
+### 🏗️ 模块化构建系统
+
+#### 智能构建管理
+```zig
+// build/mod.zig
+pub const ModularBuildSystem = struct {
+    // 模块依赖图
+    dependency_graph: DependencyGraph,
+
+    // 构建缓存
+    build_cache: BuildCache,
+
+    // 并行构建器
+    parallel_builder: ParallelBuilder,
+
+    // 增量构建
+    incremental_builder: IncrementalBuilder,
+
+    pub fn build(self: *Self, build_spec: BuildSpec) !BuildResult {
+        // 1. 分析依赖关系
+        const build_order = try self.dependency_graph.topologicalSort();
+
+        // 2. 检查缓存
+        const cache_hits = try self.build_cache.checkCache(build_order);
+
+        // 3. 确定需要构建的模块
+        const modules_to_build = try self.incremental_builder.filterChanged(build_order, cache_hits);
+
+        // 4. 并行构建
+        const build_tasks = try self.createBuildTasks(modules_to_build);
+        const results = try self.parallel_builder.executeTasks(build_tasks);
+
+        // 5. 更新缓存
+        try self.build_cache.updateCache(results);
+
+        return BuildResult.fromTaskResults(results);
+    }
+
+    fn createBuildTasks(self: *Self, modules: []ModuleSpec) ![]BuildTask {
+        var tasks = ArrayList(BuildTask).init(self.allocator);
+
+        for (modules) |module| {
+            const task = BuildTask{
+                .module = module,
+                .build_fn = self.getBuildFunction(module.module_type),
+                .dependencies = try self.dependency_graph.getDependencies(module.name),
+                .build_config = self.getBuildConfig(module),
+            };
+            try tasks.append(task);
+        }
+
+        return tasks.toOwnedSlice();
+    }
+};
+
+// 构建配置管理
+pub const BuildConfiguration = struct {
+    // 目标平台
+    target_platforms: []TargetPlatform,
+
+    // 优化级别
+    optimization_level: OptimizationLevel,
+
+    // 特性开关
+    feature_flags: HashMap([]const u8, bool),
+
+    // 编译器选项
+    compiler_options: CompilerOptions,
+
+    pub fn forPlatform(platform: TargetPlatform) BuildConfiguration {
+        return switch (platform) {
+            .x86_64_linux => BuildConfiguration{
+                .target_platforms = &[_]TargetPlatform{.x86_64_linux},
+                .optimization_level = .release_fast,
+                .feature_flags = getLinuxFeatures(),
+                .compiler_options = getLinuxCompilerOptions(),
+            },
+            .x86_64_windows => BuildConfiguration{
+                .target_platforms = &[_]TargetPlatform{.x86_64_windows},
+                .optimization_level = .release_fast,
+                .feature_flags = getWindowsFeatures(),
+                .compiler_options = getWindowsCompilerOptions(),
+            },
+            .aarch64_macos => BuildConfiguration{
+                .target_platforms = &[_]TargetPlatform{.aarch64_macos},
+                .optimization_level = .release_fast,
+                .feature_flags = getMacOSFeatures(),
+                .compiler_options = getMacOSCompilerOptions(),
+            },
+        };
+    }
+};
+```
+
+### 📦 包管理和分发
+
+#### 模块包管理器
+```zig
+// src/packaging/mod.zig
+pub const PackageManager = struct {
+    // 包仓库
+    repositories: ArrayList(PackageRepository),
+
+    // 本地缓存
+    local_cache: PackageCache,
+
+    // 版本解析器
+    version_resolver: VersionResolver,
+
+    // 依赖解析器
+    dependency_resolver: DependencyResolver,
+
+    pub fn installPackage(self: *Self, package_spec: PackageSpec) !void {
+        // 1. 解析版本
+        const resolved_version = try self.version_resolver.resolve(package_spec);
+
+        // 2. 解析依赖
+        const dependencies = try self.dependency_resolver.resolve(resolved_version);
+
+        // 3. 下载包
+        for (dependencies) |dep| {
+            if (!self.local_cache.hasPackage(dep)) {
+                try self.downloadPackage(dep);
+            }
+        }
+
+        // 4. 安装包
+        try self.installPackageLocal(resolved_version);
+
+        // 5. 更新元数据
+        try self.updatePackageMetadata(resolved_version);
+    }
+
+    pub fn createPackage(self: *Self, package_def: PackageDefinition) !Package {
+        // 1. 验证包定义
+        try self.validatePackageDefinition(package_def);
+
+        // 2. 构建包
+        const build_result = try self.buildPackage(package_def);
+
+        // 3. 运行测试
+        const test_result = try self.testPackage(package_def);
+
+        // 4. 创建包文件
+        const package = try self.createPackageFile(package_def, build_result);
+
+        // 5. 生成元数据
+        try self.generatePackageMetadata(package, test_result);
+
+        return package;
+    }
+};
+
+// 包定义
+pub const PackageDefinition = struct {
+    name: []const u8,
+    version: Version,
+    description: []const u8,
+    author: []const u8,
+    license: []const u8,
+
+    // 模块列表
+    modules: []ModuleDefinition,
+
+    // 依赖关系
+    dependencies: []Dependency,
+
+    // 构建脚本
+    build_script: ?[]const u8,
+
+    // 测试配置
+    test_config: TestConfiguration,
+
+    // 发布配置
+    publish_config: PublishConfiguration,
+};
+```
+
+### 🚀 部署和运维
+
+#### 部署管理系统
+```zig
+// src/deployment/mod.zig
+pub const DeploymentManager = struct {
+    // 部署策略
+    deployment_strategies: HashMap([]const u8, *DeploymentStrategy),
+
+    // 环境管理
+    environment_manager: EnvironmentManager,
+
+    // 配置管理
+    config_manager: DeploymentConfigManager,
+
+    // 健康检查
+    health_monitor: HealthMonitor,
+
+    pub fn deploy(self: *Self, deployment_spec: DeploymentSpec) !DeploymentResult {
+        // 1. 选择部署策略
+        const strategy = self.deployment_strategies.get(deployment_spec.strategy_name)
+            orelse return error.UnknownDeploymentStrategy;
+
+        // 2. 准备环境
+        try self.environment_manager.prepareEnvironment(deployment_spec.target_env);
+
+        // 3. 部署配置
+        try self.config_manager.deployConfiguration(deployment_spec.config);
+
+        // 4. 执行部署
+        const deployment_result = try strategy.deploy(deployment_spec);
+
+        // 5. 健康检查
+        const health_check = try self.health_monitor.checkDeployment(deployment_result);
+
+        if (!health_check.healthy) {
+            // 回滚部署
+            try strategy.rollback(deployment_result);
+            return error.DeploymentFailed;
+        }
+
+        return deployment_result;
+    }
+};
+
+// 部署策略接口
+pub const DeploymentStrategy = struct {
+    vtable: *const VTable,
+
+    const VTable = struct {
+        deploy: *const fn(*DeploymentStrategy, DeploymentSpec) DeploymentError!DeploymentResult,
+        rollback: *const fn(*DeploymentStrategy, DeploymentResult) DeploymentError!void,
+        validate: *const fn(*DeploymentStrategy, DeploymentSpec) DeploymentError!ValidationResult,
+        getStatus: *const fn(*DeploymentStrategy, DeploymentResult) DeploymentStatus,
+    };
+};
+
+// 蓝绿部署策略
+pub const BlueGreenDeployment = struct {
+    strategy: DeploymentStrategy,
+
+    // 蓝绿环境管理
+    blue_environment: Environment,
+    green_environment: Environment,
+    load_balancer: LoadBalancer,
+
+    pub fn deploy(self: *Self, spec: DeploymentSpec) !DeploymentResult {
+        // 1. 确定目标环境（蓝或绿）
+        const target_env = if (self.blue_environment.is_active)
+            &self.green_environment
+        else
+            &self.blue_environment;
+
+        // 2. 部署到目标环境
+        try target_env.deploy(spec.package);
+
+        // 3. 健康检查
+        try target_env.healthCheck();
+
+        // 4. 切换流量
+        try self.load_balancer.switchTraffic(target_env);
+
+        // 5. 标记环境状态
+        target_env.is_active = true;
+        if (target_env == &self.green_environment) {
+            self.blue_environment.is_active = false;
+        } else {
+            self.green_environment.is_active = false;
+        }
+
+        return DeploymentResult{
+            .deployment_id = generateDeploymentId(),
+            .target_environment = target_env.name,
+            .deployment_time = std.time.timestamp(),
+            .package_version = spec.package.version,
+        };
+    }
+};
+
+// 滚动部署策略
+pub const RollingDeployment = struct {
+    strategy: DeploymentStrategy,
+
+    // 实例管理
+    instances: []ServiceInstance,
+    batch_size: u32,
+    health_check_interval: u64,
+
+    pub fn deploy(self: *Self, spec: DeploymentSpec) !DeploymentResult {
+        const total_batches = (self.instances.len + self.batch_size - 1) / self.batch_size;
+
+        for (0..total_batches) |batch_idx| {
+            const start_idx = batch_idx * self.batch_size;
+            const end_idx = @min(start_idx + self.batch_size, self.instances.len);
+            const batch = self.instances[start_idx..end_idx];
+
+            // 1. 部署到当前批次
+            for (batch) |*instance| {
+                try instance.deploy(spec.package);
+            }
+
+            // 2. 健康检查
+            for (batch) |*instance| {
+                try self.waitForHealthy(instance);
+            }
+
+            // 3. 等待稳定
+            std.time.sleep(self.health_check_interval);
+        }
+
+        return DeploymentResult{
+            .deployment_id = generateDeploymentId(),
+            .instances_updated = self.instances.len,
+            .deployment_time = std.time.timestamp(),
+            .package_version = spec.package.version,
+        };
+    }
+};
+```
+
+### 📊 运维监控
+
+#### 运维自动化
+```zig
+// src/operations/mod.zig
+pub const OperationsManager = struct {
+    // 自动扩缩容
+    auto_scaler: AutoScaler,
+
+    // 故障自愈
+    self_healing: SelfHealing,
+
+    // 性能调优
+    performance_tuner: PerformanceTuner,
+
+    // 资源管理
+    resource_manager: ResourceManager,
+
+    pub fn manageSystem(self: *Self) !void {
+        while (self.isRunning()) {
+            // 1. 收集系统指标
+            const metrics = try self.collectSystemMetrics();
+
+            // 2. 自动扩缩容
+            try self.auto_scaler.evaluate(metrics);
+
+            // 3. 故障检测和自愈
+            try self.self_healing.checkAndHeal(metrics);
+
+            // 4. 性能调优
+            try self.performance_tuner.optimize(metrics);
+
+            // 5. 资源清理
+            try self.resource_manager.cleanup();
+
+            // 等待下一个周期
+            std.time.sleep(self.management_interval);
+        }
+    }
+};
+
+// 自动扩缩容
+pub const AutoScaler = struct {
+    // 扩缩容策略
+    scaling_policies: []ScalingPolicy,
+
+    // 指标阈值
+    scale_up_threshold: f64,
+    scale_down_threshold: f64,
+
+    // 冷却时间
+    cooldown_period: u64,
+    last_scaling_time: i64,
+
+    pub fn evaluate(self: *Self, metrics: SystemMetrics) !void {
+        const current_time = std.time.timestamp();
+
+        // 检查冷却时间
+        if (current_time - self.last_scaling_time < self.cooldown_period) {
+            return;
+        }
+
+        // 评估扩容需求
+        if (metrics.cpu_utilization > self.scale_up_threshold or
+            metrics.memory_utilization > self.scale_up_threshold) {
+            try self.scaleUp();
+            self.last_scaling_time = current_time;
+        }
+        // 评估缩容需求
+        else if (metrics.cpu_utilization < self.scale_down_threshold and
+                 metrics.memory_utilization < self.scale_down_threshold) {
+            try self.scaleDown();
+            self.last_scaling_time = current_time;
+        }
+    }
+};
+```
+
+## 📊 当前架构分析
+
+### 🔍 现有实现优势
+1. **模块化设计**: 清晰的Actor、Mailbox、Scheduler、Message分离
+2. **类型安全**: 利用Zig编译时类型检查
+3. **无锁队列**: 基于MPSC的LockFreeQueue实现
+4. **监督树**: 完整的容错和故障恢复机制
+5. **多种邮箱**: Standard、Fast、HighPerf、UltraFast四种实现
+
+### ⚠️ 关键性能瓶颈
+
+#### 1. 调度器问题
+- **未实现**: WorkStealingScheduler等核心调度器返回`NotImplemented`
+- **单线程瓶颈**: 缺乏真正的多线程工作窃取
+- **任务分发**: 没有高效的任务分发机制
+
+#### 2. 消息系统瓶颈
+- **内存分配**: 每个消息都需要动态分配
+- **序列化开销**: 复杂的消息序列化/反序列化
+- **拷贝成本**: 缺乏零拷贝消息传递
+
+#### 3. Actor生命周期开销
+- **同步原语**: 每个Actor都有Mutex和Condition，增加内存开销
+- **状态检查**: 频繁的原子状态检查
+- **上下文切换**: 重量级的ActorContext
+
+#### 4. 邮箱性能限制
+- **虚函数调用**: MailboxInterface的vtable调用开销
+- **内存布局**: 缺乏缓存友好的内存布局
+- **批处理**: 有限的批量消息处理能力
+
+## 🎯 性能目标
+
+### 核心指标
+- **吞吐量**: 1,000,000+ 消息/秒 (100万+)
+- **延迟**: < 100ns 本地消息传递
+- **内存效率**: < 512B 每个Actor开销
+- **扩展性**: 线性扩展到32+ CPU核心
+
+### 对标系统
+- **Actix (Rust)**: ~800K msg/s
+- **Akka (JVM)**: ~500K msg/s  
+- **Erlang/OTP**: ~300K msg/s
+- **目标**: 超越所有现有系统
+
+## 🏗️ 架构重构方案
+
+### 1. 零拷贝消息系统
+
+#### 消息池化架构
+```zig
+pub const MessagePool = struct {
+    // 预分配消息块
+    blocks: []MessageBlock,
+    free_list: LockFreeStack(*MessageBlock),
+    
+    // 不同大小的消息池
+    small_pool: FixedSizePool(64),   // <= 64字节
+    medium_pool: FixedSizePool(256), // <= 256字节
+    large_pool: FixedSizePool(1024), // <= 1024字节
+    
+    // 零拷贝消息引用
+    pub fn allocMessage(size: usize) *MessageRef;
+    pub fn freeMessage(msg: *MessageRef) void;
+};
+```
+
+#### 内联消息优化
+```zig
+pub const InlineMessage = packed struct {
+    header: MessageHeader,
+    data: [56]u8, // 内联小消息，避免指针跳转
+    
+    pub fn isInline(self: *const Self) bool;
+    pub fn getDataPtr(self: *const Self) []const u8;
+};
+```
+
+### 2. 高性能工作窃取调度器
+
+#### 多级队列架构
+```zig
+pub const WorkStealingScheduler = struct {
+    // 每个工作线程的本地队列
+    local_queues: []LocalQueue,
+    
+    // 全局高优先级队列
+    global_queue: LockFreeQueue(Task),
+    
+    // 工作线程池
+    workers: []WorkerThread,
+    
+    // 负载均衡器
+    load_balancer: LoadBalancer,
+    
+    pub fn submitTask(task: Task) !void;
+    pub fn stealWork(worker_id: u32) ?Task;
+};
+```
+
+#### NUMA感知调度
+```zig
+pub const NUMAScheduler = struct {
+    numa_nodes: []NUMANode,
+    
+    pub fn scheduleActorOnNode(actor: *Actor, node_id: u32) !void;
+    pub fn migrateActor(actor: *Actor, target_node: u32) !void;
+};
+```
+
+### 3. 超高性能邮箱系统
+
+#### 分片邮箱架构
+```zig
+pub const ShardedMailbox = struct {
+    // 多个分片减少竞争
+    shards: [16]MailboxShard,
+    shard_mask: u32,
+    
+    // 每个分片独立的队列
+    pub const MailboxShard = struct {
+        queue: LockFreeQueue(MessageRef),
+        stats: ShardStats align(64),
+    };
+    
+    pub fn send(msg: MessageRef) !void;
+    pub fn receive() ?MessageRef;
+    pub fn receiveBatch(buffer: []MessageRef) u32;
+};
+```
+
+#### 硬件优化邮箱
+```zig
+pub const HardwareOptimizedMailbox = struct {
+    // CPU缓存行对齐的队列
+    producer_queue: LockFreeQueue(MessageRef) align(64),
+    consumer_queue: LockFreeQueue(MessageRef) align(64),
+    
+    // 使用CPU特定指令优化
+    pub fn sendFast(msg: MessageRef) bool {
+        // 使用FAA (Fetch-And-Add) 在x86_64
+        // 使用LDXR/STXR在ARM64
+    }
+};
+```
+
+### 4. 轻量级Actor实现
+
+#### 最小化Actor结构
+```zig
+pub const LightweightActor = struct {
+    // 仅保留必要字段
+    id: ActorId,
+    state: AtomicU8, // 压缩状态到单字节
+    mailbox_ref: MailboxRef, // 引用而非指针
+    behavior_vtable: *const BehaviorVTable,
+    
+    // 移除重量级同步原语
+    // 移除统计信息（可选启用）
+    // 移除配置信息（全局配置）
+};
+```
+
+#### 行为内联优化
+```zig
+pub fn InlineActor(comptime BehaviorType: type) type {
+    return struct {
+        const Self = @This();
+        
+        // 内联行为，避免虚函数调用
+        behavior: BehaviorType,
+        core: ActorCore,
+        
+        pub fn receive(self: *Self, msg: MessageRef) !void {
+            // 直接调用，无虚函数开销
+            return self.behavior.receive(msg);
+        }
+    };
+}
+```
+
+## 🚀 实施计划
+
+### Phase 1: 核心基础设施重构 (2周)
+
+#### Week 1: 消息系统优化
+- [ ] 实现MessagePool和零拷贝消息
+- [ ] 优化消息序列化/反序列化
+- [ ] 实现InlineMessage小消息优化
+- [ ] 建立消息性能基准测试
+
+#### Week 2: 调度器实现
+- [ ] 实现WorkStealingScheduler核心逻辑
+- [ ] 添加NUMA感知调度
+- [ ] 实现负载均衡算法
+- [ ] 调度器性能测试和调优
+
+### Phase 2: 邮箱系统升级 (2周)
+
+#### Week 3: 高性能邮箱
+- [ ] 实现ShardedMailbox分片架构
+- [ ] 优化HardwareOptimizedMailbox
+- [ ] 添加批量消息处理
+- [ ] 邮箱性能基准测试
+
+#### Week 4: Actor系统优化
+- [ ] 实现LightweightActor
+- [ ] 优化Actor生命周期管理
+- [ ] 实现InlineActor模板
+- [ ] 整体系统集成测试
+
+### Phase 3: 性能调优与验证 (2周)
+
+#### Week 5: 性能优化
+- [ ] CPU缓存优化和内存布局调整
+- [ ] 编译器优化和内联函数
+- [ ] 平台特定汇编优化
+- [ ] 性能剖析和瓶颈分析
+
+#### Week 6: 基准测试与验证
+- [ ] 与Actix/Akka性能对比
+- [ ] 1M+ msg/s吞吐量验证
+- [ ] 延迟分布分析
+- [ ] 稳定性和压力测试
+
+## 🔧 关键技术实现
+
+### 1. 零拷贝消息传递
+```zig
+// 消息引用，避免拷贝
+pub const MessageRef = struct {
+    ptr: *MessageBlock,
+    offset: u32,
+    size: u32,
+    
+    pub fn getData(self: MessageRef) []const u8 {
+        return self.ptr.data[self.offset..self.offset + self.size];
+    }
+};
+```
+
+### 2. 批量消息处理
+```zig
+pub fn processBatch(mailbox: *Mailbox, batch_size: u32) u32 {
+    var buffer: [256]MessageRef = undefined;
+    const count = mailbox.receiveBatch(buffer[0..batch_size]);
+    
+    for (buffer[0..count]) |msg| {
+        // 批量处理，减少函数调用开销
+        processMessageInline(msg);
+    }
+    
+    return count;
+}
+```
+
+### 3. 编译时优化
+```zig
+pub fn OptimizedActor(comptime config: ActorConfig) type {
+    return struct {
+        // 根据配置在编译时优化结构
+        const enable_stats = config.enable_statistics;
+        const mailbox_type = config.mailbox_type;
+        
+        stats: if (enable_stats) ActorStats else void,
+        mailbox: mailbox_type.Type(),
+    };
+}
+```
+
+## 📈 预期性能提升
+
+### 吞吐量提升
+- **当前**: ~50K msg/s (估算)
+- **目标**: 1M+ msg/s
+- **提升**: 20x+
+
+### 延迟优化
+- **当前**: ~1μs
+- **目标**: <100ns
+- **提升**: 10x+
+
+### 内存效率
+- **当前**: ~2KB/Actor
+- **目标**: <512B/Actor  
+- **提升**: 4x+
+
+## 🎯 成功标准
+
+### 功能要求
+- [ ] 完整的Actor生命周期管理
+- [ ] 监督树容错机制
+- [ ] 类型安全的消息系统
+- [ ] 多线程调度和工作窃取
+
+### 性能要求
+- [ ] 1M+ 消息/秒吞吐量
+- [ ] <100ns 消息传递延迟
+- [ ] 线性扩展到32+ CPU核心
+- [ ] <512B 每Actor内存开销
+
+### 质量要求
+- [ ] 零内存泄漏
+- [ ] 线程安全保证
+- [ ] 全面的单元测试
+- [ ] 性能回归测试
+
+这个计划将ZActor从当前的原型状态提升到生产级的高性能Actor系统，目标是成为Zig生态系统中最快的并发框架。
+
+## 🔬 深度技术分析
+
+### Actix vs Akka vs ZActor 对比分析
+
+#### Actix (Rust) 架构优势
+- **零成本抽象**: Rust的所有权系统避免运行时检查
+- **异步运行时**: 基于Tokio的高效异步调度
+- **类型安全**: 编译时消息类型检查
+- **内存安全**: 无GC的内存管理
+
+#### Akka (Scala/JVM) 架构特点
+- **成熟生态**: 丰富的工具和库支持
+- **分布式**: 内置集群和远程Actor支持
+- **容错性**: 完善的监督策略
+- **JVM优化**: JIT编译器优化
+
+#### ZActor 独特优势
+- **编译时优化**: Zig的comptime提供更强的编译时计算
+- **零运行时**: 无GC、无虚拟机开销
+- **手动内存管理**: 精确控制内存分配和释放
+- **硬件接近**: 直接访问硬件特性
+
+### 🧬 核心算法设计
+
+#### 1. 高效消息路由算法
+```zig
+pub const MessageRouter = struct {
+    // 使用Robin Hood哈希表实现O(1)路由
+    routing_table: RobinHoodHashMap(ActorId, ActorRef),
+
+    // 本地缓存减少哈希查找
+    local_cache: [256]CacheEntry align(64),
+    cache_mask: u8 = 255,
+
+    pub fn route(self: *Self, target_id: ActorId, msg: MessageRef) !void {
+        // 快速路径：检查本地缓存
+        const cache_idx = @truncate(u8, target_id) & self.cache_mask;
+        if (self.local_cache[cache_idx].id == target_id) {
+            return self.local_cache[cache_idx].actor_ref.send(msg);
+        }
+
+        // 慢速路径：哈希表查找
+        if (self.routing_table.get(target_id)) |actor_ref| {
+            self.local_cache[cache_idx] = .{ .id = target_id, .actor_ref = actor_ref };
+            return actor_ref.send(msg);
+        }
+
+        return error.ActorNotFound;
+    }
+};
+```
+
+#### 2. 自适应负载均衡
+```zig
+pub const AdaptiveLoadBalancer = struct {
+    workers: []WorkerStats,
+    load_history: RingBuffer(f64, 1000), // 保存1000个历史负载点
+
+    pub fn selectWorker(self: *Self) u32 {
+        // 基于指数加权移动平均选择最优工作线程
+        var min_load: f64 = std.math.inf(f64);
+        var best_worker: u32 = 0;
+
+        for (self.workers, 0..) |worker, i| {
+            const current_load = self.calculateEWMA(worker);
+            if (current_load < min_load) {
+                min_load = current_load;
+                best_worker = @intCast(u32, i);
+            }
+        }
+
+        return best_worker;
+    }
+
+    fn calculateEWMA(self: *Self, worker: WorkerStats) f64 {
+        const alpha = 0.3; // 平滑因子
+        return alpha * worker.current_load + (1.0 - alpha) * worker.avg_load;
+    }
+};
+```
+
+#### 3. 内存池管理算法
+```zig
+pub const AdvancedMemoryPool = struct {
+    // 多级内存池，减少碎片
+    pools: [8]FixedSizePool, // 8, 16, 32, 64, 128, 256, 512, 1024字节
+
+    // 大对象直接分配
+    large_allocator: std.heap.GeneralPurposeAllocator(.{}),
+
+    // 统计信息用于动态调整
+    allocation_stats: AllocationStats,
+
+    pub fn allocate(self: *Self, size: usize) ![]u8 {
+        if (size <= 1024) {
+            const pool_idx = std.math.log2_int(usize, std.math.ceilPowerOfTwo(usize, size) catch size) - 3;
+            return self.pools[pool_idx].allocate();
+        } else {
+            return self.large_allocator.allocator().alloc(u8, size);
+        }
+    }
+
+    pub fn deallocate(self: *Self, ptr: []u8) void {
+        if (ptr.len <= 1024) {
+            const pool_idx = std.math.log2_int(usize, ptr.len) - 3;
+            self.pools[pool_idx].deallocate(ptr);
+        } else {
+            self.large_allocator.allocator().free(ptr);
+        }
+    }
+};
+```
+
+### 🎛️ 高级配置系统
+
+#### 运行时性能调优
+```zig
+pub const PerformanceTuner = struct {
+    // 动态调整参数
+    batch_size: AtomicU32,
+    steal_attempts: AtomicU32,
+    spin_cycles: AtomicU32,
+
+    // 性能监控
+    metrics_collector: MetricsCollector,
+
+    pub fn autoTune(self: *Self) void {
+        const current_metrics = self.metrics_collector.snapshot();
+
+        // 基于当前性能动态调整参数
+        if (current_metrics.avg_latency > target_latency) {
+            // 减少批处理大小，降低延迟
+            _ = self.batch_size.fetchSub(1, .monotonic);
+        } else if (current_metrics.throughput < target_throughput) {
+            // 增加批处理大小，提高吞吐量
+            _ = self.batch_size.fetchAdd(1, .monotonic);
+        }
+    }
+};
+```
+
+#### 编译时配置优化
+```zig
+pub const CompileTimeConfig = struct {
+    // 编译时常量，零运行时开销
+    pub const ENABLE_STATISTICS = @import("builtin").mode == .Debug;
+    pub const ENABLE_TRACING = false;
+    pub const MAX_ACTORS = 10000;
+    pub const DEFAULT_MAILBOX_SIZE = 1024;
+
+    // 条件编译
+    pub const ActorImpl = if (ENABLE_STATISTICS)
+        StatisticsActor
+    else
+        LightweightActor;
+};
+```
+
+### 🔍 性能监控与诊断
+
+#### 实时性能监控
+```zig
+pub const PerformanceMonitor = struct {
+    // 低开销的性能计数器
+    message_counters: [64]AtomicU64 align(64), // 每个CPU核心一个计数器
+    latency_histogram: Histogram,
+
+    pub fn recordMessage(self: *Self, processing_time_ns: u64) void {
+        const cpu_id = getCurrentCPU();
+        _ = self.message_counters[cpu_id].fetchAdd(1, .monotonic);
+        self.latency_histogram.record(processing_time_ns);
+    }
+
+    pub fn getMetrics(self: *Self) PerformanceMetrics {
+        var total_messages: u64 = 0;
+        for (self.message_counters) |counter| {
+            total_messages += counter.load(.monotonic);
+        }
+
+        return PerformanceMetrics{
+            .total_messages = total_messages,
+            .p50_latency = self.latency_histogram.percentile(50),
+            .p99_latency = self.latency_histogram.percentile(99),
+            .p999_latency = self.latency_histogram.percentile(99.9),
+        };
+    }
+};
+```
+
+### 🧪 测试与验证策略
+
+#### 性能回归测试
+```zig
+pub const PerformanceRegressionTest = struct {
+    baseline_metrics: PerformanceMetrics,
+
+    pub fn runRegressionTest(self: *Self) !TestResult {
+        const current_metrics = runBenchmark();
+
+        // 检查性能回归
+        if (current_metrics.throughput < self.baseline_metrics.throughput * 0.95) {
+            return TestResult{ .status = .failed, .reason = "Throughput regression" };
+        }
+
+        if (current_metrics.p99_latency > self.baseline_metrics.p99_latency * 1.1) {
+            return TestResult{ .status = .failed, .reason = "Latency regression" };
+        }
+
+        return TestResult{ .status = .passed };
+    }
+};
+```
+
+#### 压力测试框架
+```zig
+pub const StressTestFramework = struct {
+    pub fn runStressTest(config: StressTestConfig) !StressTestResult {
+        // 创建大量Actor
+        var actors = try createActors(config.num_actors);
+        defer destroyActors(actors);
+
+        // 多线程发送消息
+        var threads = try createSenderThreads(config.num_senders);
+        defer joinThreads(threads);
+
+        // 监控系统资源
+        const resource_monitor = ResourceMonitor.init();
+
+        // 运行测试
+        const start_time = std.time.nanoTimestamp();
+        startSenderThreads(threads, actors, config.messages_per_second);
+
+        // 等待完成
+        std.time.sleep(config.duration_seconds * std.time.ns_per_s);
+
+        stopSenderThreads(threads);
+        const end_time = std.time.nanoTimestamp();
+
+        return StressTestResult{
+            .duration_ns = end_time - start_time,
+            .messages_sent = getTotalMessagesSent(threads),
+            .messages_processed = getTotalMessagesProcessed(actors),
+            .peak_memory_usage = resource_monitor.getPeakMemoryUsage(),
+            .peak_cpu_usage = resource_monitor.getPeakCPUUsage(),
+        };
+    }
+};
+```
+
+## 🚀 实施里程碑
+
+### Milestone 1: 基础架构 (Week 1-2)
+- [ ] 零拷贝消息系统实现
+- [ ] 工作窃取调度器核心
+- [ ] 基础性能测试通过
+- **成功标准**: 100K+ msg/s
+
+### Milestone 2: 高级优化 (Week 3-4)
+- [ ] 分片邮箱系统
+- [ ] 轻量级Actor实现
+- [ ] NUMA感知调度
+- **成功标准**: 500K+ msg/s
+
+### Milestone 3: 极致优化 (Week 5-6)
+- [ ] 硬件特定优化
+- [ ] 编译时优化
+- [ ] 性能调优完成
+- **成功标准**: 1M+ msg/s
+
+### 最终目标
+- **吞吐量**: 1,000,000+ 消息/秒
+- **延迟**: P99 < 100ns
+- **扩展性**: 线性扩展到32核
+- **稳定性**: 24小时压力测试无故障
+
+通过这个全面的重构计划，ZActor将成为世界上最快的Actor框架之一，充分发挥Zig语言的系统编程优势。
+
+## 💡 创新技术方案
+
+### 1. 消息内联优化 (Message Inlining)
+```zig
+// 小消息直接内联在Actor结构中，避免指针跳转
+pub const InlineMessageActor = struct {
+    core: ActorCore,
+    // 预留空间存储小消息，避免堆分配
+    inline_buffer: [128]u8 align(8),
+    inline_msg_size: u8,
+
+    pub fn receiveInline(self: *Self, data: []const u8) !void {
+        if (data.len <= 128) {
+            // 零拷贝：直接在Actor内部处理
+            @memcpy(self.inline_buffer[0..data.len], data);
+            self.inline_msg_size = @intCast(u8, data.len);
+            return self.processInlineMessage();
+        } else {
+            // 大消息走正常流程
+            return self.receiveHeapMessage(data);
+        }
+    }
+};
+```
+
+### 2. 预测性调度 (Predictive Scheduling)
+```zig
+pub const PredictiveScheduler = struct {
+    // 基于历史数据预测Actor负载
+    load_predictor: LoadPredictor,
+
+    // 预分配工作线程到高负载Actor
+    affinity_map: HashMap(ActorId, u32),
+
+    pub fn scheduleWithPrediction(self: *Self, actor_id: ActorId) u32 {
+        const predicted_load = self.load_predictor.predict(actor_id);
+
+        if (predicted_load > HIGH_LOAD_THRESHOLD) {
+            // 高负载Actor分配专用线程
+            return self.assignDedicatedWorker(actor_id);
+        } else {
+            // 低负载Actor使用共享线程池
+            return self.selectSharedWorker();
+        }
+    }
+};
+```
+
+### 3. 分层消息优先级 (Hierarchical Message Priority)
+```zig
+pub const HierarchicalPriorityQueue = struct {
+    // 多级优先级队列
+    critical_queue: LockFreeQueue(MessageRef),    // 系统关键消息
+    high_queue: LockFreeQueue(MessageRef),        // 高优先级用户消息
+    normal_queue: LockFreeQueue(MessageRef),      // 普通消息
+    low_queue: LockFreeQueue(MessageRef),         // 低优先级消息
+
+    // 动态优先级调整
+    priority_booster: PriorityBooster,
+
+    pub fn dequeue(self: *Self) ?MessageRef {
+        // 按优先级顺序处理，防止饥饿
+        if (self.critical_queue.pop()) |msg| return msg;
+        if (self.high_queue.pop()) |msg| return msg;
+
+        // 防止低优先级消息饥饿
+        if (self.priority_booster.shouldBoostLowPriority()) {
+            if (self.low_queue.pop()) |msg| return msg;
+        }
+
+        return self.normal_queue.pop();
+    }
+};
+```
+
+### 4. 智能批处理 (Intelligent Batching)
+```zig
+pub const IntelligentBatcher = struct {
+    // 动态调整批处理大小
+    current_batch_size: AtomicU32,
+
+    // 基于延迟调整批处理策略
+    latency_monitor: LatencyMonitor,
+
+    pub fn processBatch(self: *Self, mailbox: *Mailbox) !u32 {
+        const target_latency = 50_000; // 50μs目标延迟
+        const current_latency = self.latency_monitor.getAverageLatency();
+
+        // 动态调整批处理大小
+        if (current_latency > target_latency) {
+            // 延迟过高，减少批处理大小
+            self.reduceBatchSize();
+        } else if (current_latency < target_latency / 2) {
+            // 延迟很低，可以增加批处理大小
+            self.increaseBatchSize();
+        }
+
+        const batch_size = self.current_batch_size.load(.monotonic);
+        return mailbox.receiveBatch(batch_size);
+    }
+};
+```
+
+## 🔧 系统级优化
+
+### 1. CPU缓存优化
+```zig
+// 确保热点数据结构缓存行对齐
+pub const CacheOptimizedActor = struct {
+    // 第一个缓存行：最频繁访问的数据
+    id: ActorId align(64),
+    state: AtomicU8,
+    mailbox_head: AtomicU32,
+    mailbox_tail: AtomicU32,
+    _padding1: [64 - @sizeOf(ActorId) - @sizeOf(AtomicU8) - @sizeOf(AtomicU32) * 2]u8,
+
+    // 第二个缓存行：次频繁访问的数据
+    behavior_vtable: *const BehaviorVTable align(64),
+    parent_ref: ?ActorRef,
+    stats: ActorStats,
+    _padding2: [64 - @sizeOf(*const BehaviorVTable) - @sizeOf(?ActorRef) - @sizeOf(ActorStats)]u8,
+
+    // 冷数据放在最后
+    config: ActorConfig,
+    debug_info: DebugInfo,
+};
+```
+
+### 2. 内存预取优化
+```zig
+pub const PrefetchOptimizedMailbox = struct {
+    buffer: []MessageRef,
+
+    pub fn receiveBatch(self: *Self, output: []MessageRef) u32 {
+        const head = self.head.load(.acquire);
+        const tail = self.tail.load(.acquire);
+
+        if (head == tail) return 0;
+
+        const available = (tail - head) & self.mask;
+        const to_read = @min(available, output.len);
+
+        // 预取下一批数据到CPU缓存
+        if (to_read > 0) {
+            const next_head = (head + to_read) & self.mask;
+            prefetchMemory(&self.buffer[next_head], 64); // 预取下一个缓存行
+        }
+
+        // 批量拷贝
+        for (0..to_read) |i| {
+            output[i] = self.buffer[(head + i) & self.mask];
+        }
+
+        self.head.store((head + to_read) & self.mask, .release);
+        return @intCast(u32, to_read);
+    }
+
+    inline fn prefetchMemory(ptr: *const anyopaque, size: usize) void {
+        // 使用编译器内置函数进行内存预取
+        @prefetch(ptr, .read, 3, .data);
+        _ = size;
+    }
+};
+```
+
+### 3. 分支预测优化
+```zig
+pub const BranchOptimizedDispatcher = struct {
+    pub fn dispatch(self: *Self, msg: MessageRef) !void {
+        // 使用likely/unlikely提示编译器优化分支预测
+        if (@import("std").builtin.expect(msg.isUserMessage(), true)) {
+            // 用户消息是最常见的情况
+            return self.dispatchUserMessage(msg);
+        } else if (@import("std").builtin.expect(msg.isSystemMessage(), false)) {
+            // 系统消息相对少见
+            return self.dispatchSystemMessage(msg);
+        } else {
+            // 控制消息最少见
+            return self.dispatchControlMessage(msg);
+        }
+    }
+};
+```
+
+## 📊 性能基准测试框架
+
+### 1. 微基准测试
+```zig
+pub const MicroBenchmarks = struct {
+    pub fn benchmarkMessageSend() !BenchmarkResult {
+        const iterations = 1_000_000;
+        var timer = try Timer.start();
+
+        for (0..iterations) |_| {
+            // 测试单个消息发送的延迟
+            const start = timer.read();
+            try actor.send(test_message);
+            const end = timer.read();
+
+            latency_samples.append(end - start);
+        }
+
+        return BenchmarkResult{
+            .avg_latency_ns = calculateAverage(latency_samples),
+            .p99_latency_ns = calculatePercentile(latency_samples, 99),
+            .throughput_ops_per_sec = iterations * 1_000_000_000 / timer.read(),
+        };
+    }
+
+    pub fn benchmarkWorkStealing() !BenchmarkResult {
+        // 测试工作窃取效率
+        const num_workers = 8;
+        const tasks_per_worker = 10000;
+
+        var scheduler = WorkStealingScheduler.init(num_workers);
+        defer scheduler.deinit();
+
+        // 提交任务到单个队列，测试窃取效率
+        for (0..tasks_per_worker) |_| {
+            try scheduler.submitToWorker(0, TestTask.init());
+        }
+
+        const start_time = std.time.nanoTimestamp();
+        try scheduler.waitForCompletion();
+        const end_time = std.time.nanoTimestamp();
+
+        return BenchmarkResult{
+            .total_time_ns = end_time - start_time,
+            .tasks_completed = num_workers * tasks_per_worker,
+            .steal_efficiency = scheduler.getStealEfficiency(),
+        };
+    }
+};
+```
+
+### 2. 端到端性能测试
+```zig
+pub const EndToEndBenchmark = struct {
+    pub fn benchmarkActorSystem() !SystemBenchmarkResult {
+        const config = SystemConfig{
+            .num_actors = 1000,
+            .messages_per_actor = 1000,
+            .test_duration_seconds = 60,
+        };
+
+        var system = try ActorSystem.init("benchmark", allocator);
+        defer system.deinit();
+
+        // 创建Actor网络
+        const actors = try createActorNetwork(system, config.num_actors);
+        defer destroyActors(actors);
+
+        // 启动消息流
+        const message_generator = MessageGenerator.init(config);
+        const start_time = std.time.nanoTimestamp();
+
+        try message_generator.startMessageFlow(actors);
+
+        // 等待测试完成
+        std.time.sleep(config.test_duration_seconds * std.time.ns_per_s);
+
+        message_generator.stop();
+        const end_time = std.time.nanoTimestamp();
+
+        // 收集统计信息
+        const system_stats = system.getStatistics();
+
+        return SystemBenchmarkResult{
+            .total_messages_processed = system_stats.total_messages,
+            .average_throughput = calculateThroughput(system_stats, end_time - start_time),
+            .memory_usage = system_stats.peak_memory_usage,
+            .cpu_utilization = system_stats.average_cpu_usage,
+            .latency_distribution = system_stats.latency_histogram,
+        };
+    }
+};
+```
+
+## 🎯 最终交付成果
+
+### 1. 核心库文件
+- `src/core/ultra_scheduler.zig` - 超高性能调度器
+- `src/core/zero_copy_message.zig` - 零拷贝消息系统
+- `src/core/sharded_mailbox.zig` - 分片邮箱实现
+- `src/core/lightweight_actor.zig` - 轻量级Actor
+- `src/core/performance_monitor.zig` - 性能监控系统
+
+### 2. 基准测试套件
+- `benchmarks/throughput_benchmark.zig` - 吞吐量测试
+- `benchmarks/latency_benchmark.zig` - 延迟测试
+- `benchmarks/scalability_benchmark.zig` - 扩展性测试
+- `benchmarks/memory_benchmark.zig` - 内存效率测试
+
+### 3. 示例应用
+- `examples/high_frequency_trading.zig` - 高频交易模拟
+- `examples/game_server.zig` - 游戏服务器示例
+- `examples/distributed_computing.zig` - 分布式计算示例
+
+### 4. 文档和指南
+- `docs/performance_guide.md` - 性能优化指南
+- `docs/architecture_overview.md` - 架构概览
+- `docs/api_reference.md` - API参考文档
+- `docs/migration_guide.md` - 迁移指南
+
+这个全面的重构计划将使ZActor成为世界级的高性能Actor框架，在吞吐量、延迟和资源效率方面都达到业界领先水平。
