@@ -49,6 +49,7 @@ pub const UltraFastMailbox = struct {
         .isEmpty = isEmpty,
         .size = size,
         .capacity = getCapacity,
+        .clear = clearVTable,
         .deinit = deinit,
         .destroy = destroy,
         .getStats = getStats,
@@ -112,6 +113,11 @@ pub const UltraFastMailbox = struct {
     fn getCapacity(ptr: *anyopaque) u32 {
         const self: *Self = @ptrCast(@alignCast(ptr));
         return self.rings[0].capacity * NUM_RINGS;
+    }
+
+    fn clearVTable(ptr: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        _ = self.clear();
     }
 
     fn deinit(ptr: *anyopaque) void {
@@ -228,6 +234,15 @@ pub const UltraFastMailbox = struct {
             total_size += (current_tail - current_head) & ring.mask;
         }
         return total_size;
+    }
+
+    pub fn clear(self: *Self) u32 {
+        var cleared_count: u32 = 0;
+        while (self.receiveMessage()) |message| {
+            message.deinit(self.allocator);
+            cleared_count += 1;
+        }
+        return cleared_count;
     }
 
     pub fn deinitImpl(self: *Self) void {

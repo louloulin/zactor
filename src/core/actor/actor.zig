@@ -244,11 +244,15 @@ pub const Actor = struct {
     pub fn deinit(self: *Self) void {
         self.stop();
 
+        // 释放behavior
+        if (self.behavior) |behavior| {
+            self.allocator.destroy(behavior);
+        }
+
         // 释放邮箱
         self.mailbox.destroy(self.allocator);
 
-        // 释放Actor本身
-        self.allocator.destroy(self);
+        // 注意：不要在这里释放Actor本身，应该由创建者负责释放
     }
 
     pub fn setBehavior(self: *Self, behavior: *ActorBehavior) void {
@@ -347,7 +351,7 @@ pub const Actor = struct {
 
     pub fn send(self: *Self, message: *Message, sender: ?*Actor) !void {
         const current_status = self.status.load(.acquire);
-        if (current_status != .running and current_status != .starting) {
+        if (current_status != .running and current_status != .starting and current_status != .created) {
             return ActorError.ActorTerminated;
         }
 

@@ -137,8 +137,24 @@ pub const ActorSystem = struct {
         var actor_iter = self.actors.iterator();
         while (actor_iter.next()) |entry| {
             allocator.free(entry.key_ptr.*);
+
+            // 获取ActorRef
+            const actor_ref = entry.value_ptr.*;
+
+            // 如果是本地Actor，先释放底层Actor
+            if (actor_ref.getLocalActor()) |actor| {
+                actor.deinit();
+                allocator.destroy(actor);
+            }
+
             // 调用ActorRef的deinit方法
-            entry.value_ptr.*.deinit();
+            actor_ref.deinit();
+
+            // 如果是LocalActorRef，释放LocalActorRef本身
+            if (actor_ref.isLocal()) {
+                const local_ref = @as(*LocalActorRef, @fieldParentPtr("actor_ref", actor_ref));
+                allocator.destroy(local_ref);
+            }
         }
         self.actors.deinit();
 

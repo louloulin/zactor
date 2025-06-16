@@ -111,16 +111,15 @@ pub fn main() !void {
     while (wait_count < max_wait_iterations) {
         std.time.sleep(100 * std.time.ns_per_ms); // 100ms intervals
 
-        // Check if mailbox is empty and no more messages to process
-        if (actor_ref.mailbox.isEmpty()) {
-            std.log.info("Mailbox is empty after {d:.1} seconds", .{@as(f64, @floatFromInt(wait_count)) * 0.1});
+        // Check if actor is terminated (simplified check)
+        if (actor_ref.isTerminated()) {
+            std.log.info("Actor terminated after {d:.1} seconds", .{@as(f64, @floatFromInt(wait_count)) * 0.1});
             break;
         }
 
         // Log progress every second
         if (wait_count % 10 == 0) {
-            const mailbox_size = actor_ref.mailbox.size();
-            std.log.info("Progress check: mailbox size = {}, waited {d:.1}s", .{ mailbox_size, @as(f64, @floatFromInt(wait_count)) * 0.1 });
+            std.log.info("Progress check: waited {d:.1}s", .{@as(f64, @floatFromInt(wait_count)) * 0.1});
         }
 
         wait_count += 1;

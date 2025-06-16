@@ -101,7 +101,17 @@ pub const ActorRef = struct {
     }
 
     pub fn getId(self: *const Self) []const u8 {
-        return self.path.toString();
+        // 返回路径的字符串表示，这里简化为直接返回路径
+        // 在实际使用中可能需要分配内存
+        return self.path.path;
+    }
+
+    /// 获取底层Actor（仅适用于本地ActorRef）
+    pub fn getLocalActor(self: *Self) ?*Actor {
+        if (!self.isLocal()) return null;
+
+        const local_ref = @as(*LocalActorRef, @fieldParentPtr("actor_ref", self));
+        return local_ref.getActor();
     }
 };
 
@@ -133,11 +143,15 @@ pub const LocalActorRef = struct {
 
     pub fn deinit(self: *Self) void {
         self.actor_ref.deinit();
-        self.actor_ref.allocator.destroy(self);
+        // 注意：不要在这里释放self，应该由调用者负责
     }
 
     pub fn getActorRef(self: *Self) *ActorRef {
         return &self.actor_ref;
+    }
+
+    pub fn getActor(self: *Self) *Actor {
+        return self.actor;
     }
 
     fn tell(actor_ref: *ActorRef, message: *Message, sender: ?*ActorRef) !void {
