@@ -33,7 +33,8 @@ pub const TerminatedMessage = struct {
     existing_watcher: bool,
 };
 const Message = @import("../message/mod.zig").Message;
-const Scheduler = @import("../scheduler/mod.zig").Scheduler;
+const WorkStealingScheduler = @import("../scheduler/mod.zig").WorkStealingScheduler;
+const SchedulerConfig = @import("../scheduler/mod.zig").SchedulerConfig;
 const MailboxConfig = @import("../mailbox/mod.zig").MailboxConfig;
 const MailboxFactory = @import("../mailbox/mod.zig").MailboxFactory;
 const MailboxInterface = @import("../mailbox/mod.zig").MailboxInterface;
@@ -61,7 +62,7 @@ pub const ActorSystem = struct {
     state: AtomicValue(ActorSystemState),
 
     // 系统组件
-    scheduler: *Scheduler,
+    scheduler: *WorkStealingScheduler,
     guardian: *ActorRef,
     user_guardian: *ActorRef,
     system_guardian: *ActorRef,
@@ -86,7 +87,7 @@ pub const ActorSystem = struct {
         errdefer allocator.destroy(self);
 
         // 初始化调度器
-        const scheduler = try Scheduler.init(config.scheduler_config, allocator);
+        const scheduler = try WorkStealingScheduler.init(config.scheduler_config, allocator);
         errdefer scheduler.deinit();
 
         self.* = Self{
@@ -136,7 +137,8 @@ pub const ActorSystem = struct {
         var actor_iter = self.actors.iterator();
         while (actor_iter.next()) |entry| {
             allocator.free(entry.key_ptr.*);
-            // ActorRef会在其自己的deinit中清理
+            // 调用ActorRef的deinit方法
+            entry.value_ptr.*.deinit();
         }
         self.actors.deinit();
 
@@ -177,7 +179,7 @@ pub const ActorSystem = struct {
         return self.state.load(.seq_cst);
     }
 
-    pub fn getScheduler(self: *Self) *Scheduler {
+    pub fn getScheduler(self: *Self) *WorkStealingScheduler {
         return self.scheduler;
     }
 

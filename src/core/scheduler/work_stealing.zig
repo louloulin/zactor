@@ -89,16 +89,19 @@ pub const WorkStealingScheduler = struct {
             }
         }
 
-        fn executeTask(self: *Worker, task: *Task) void {
-            const start_time = std.time.nanoTimestamp();
+        fn executeTask(self: *Worker, task: *const Task) void {
+            const start_time = @as(i64, @intCast(std.time.nanoTimestamp()));
+
+            // 创建可变副本来执行任务
+            var mutable_task = task.*;
 
             // 执行任务
-            task.execute() catch |err| {
+            mutable_task.execute() catch |err| {
                 std.log.warn("Task execution failed: {}", .{err});
                 _ = self.scheduler.stats.tasks_failed.fetchAdd(1, .monotonic);
             };
 
-            const end_time = std.time.nanoTimestamp();
+            const end_time = @as(i64, @intCast(std.time.nanoTimestamp()));
             const execution_time = @as(u64, @intCast(end_time - start_time));
 
             // 更新统计信息

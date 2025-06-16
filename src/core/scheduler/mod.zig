@@ -161,12 +161,12 @@ pub const Task = struct {
         return Task{
             .vtable = vtable,
             .priority = priority,
-            .created_at = std.time.nanoTimestamp(),
+            .created_at = @as(i64, @intCast(std.time.nanoTimestamp())),
         };
     }
 
     pub fn execute(self: *Task) !void {
-        self.executed_at = std.time.nanoTimestamp();
+        self.executed_at = @as(i64, @intCast(std.time.nanoTimestamp()));
         try self.vtable.execute(self);
     }
 
@@ -180,7 +180,7 @@ pub const Task = struct {
 
     pub fn getWaitTime(self: *const Task) i64 {
         if (self.executed_at == 0) {
-            return std.time.nanoTimestamp() - self.created_at;
+            return @as(i64, @intCast(std.time.nanoTimestamp())) - self.created_at;
         }
         return self.executed_at - self.created_at;
     }
@@ -189,7 +189,7 @@ pub const Task = struct {
         if (self.executed_at == 0) {
             return 0;
         }
-        return std.time.nanoTimestamp() - self.executed_at;
+        return @as(i64, @intCast(std.time.nanoTimestamp())) - self.executed_at;
     }
 };
 
