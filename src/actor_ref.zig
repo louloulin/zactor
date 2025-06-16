@@ -38,16 +38,15 @@ pub const ActorRef = struct {
         }
 
         // Check if mailbox is empty BEFORE sending message
-        const was_empty = self.mailbox.isEmpty();
-
         // Create and send message
         const message = try Message.createUser(T, data, null, allocator);
         try self.mailbox.send(message);
 
-        // Only reschedule if actor is running and mailbox was empty before this message
-        if (current_state == .running and self.actor_ptr != null and was_empty) {
+        // Always reschedule if actor is running to ensure message processing
+        if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
+            // Schedule actor for every message to ensure continuous processing
             self.system_ref.scheduler.schedule(actor) catch {};
         }
 
