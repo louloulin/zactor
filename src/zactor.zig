@@ -53,6 +53,9 @@ pub const message = core.message;
 pub const scheduler = core.scheduler;
 pub const memory = core.memory;
 
+// High-performance Actor system
+pub const HighPerf = @import("core/high_perf_actor/mod.zig");
+
 // Core types
 pub const ActorId = u64;
 pub const MessageId = u64;

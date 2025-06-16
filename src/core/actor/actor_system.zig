@@ -10,6 +10,8 @@ const Thread = std.Thread;
 
 // 导入相关模块
 const Actor = @import("actor.zig").Actor;
+const ActorBehavior = @import("actor.zig").ActorBehavior;
+const ActorContext = @import("actor.zig").ActorContext;
 const ActorRef = @import("actor_ref.zig").ActorRef;
 const LocalActorRef = @import("actor_ref.zig").LocalActorRef;
 const ActorConfig = @import("mod.zig").ActorConfig;
@@ -35,6 +37,7 @@ pub const TerminatedMessage = struct {
 const Message = @import("../message/mod.zig").Message;
 const WorkStealingScheduler = @import("../scheduler/mod.zig").WorkStealingScheduler;
 const SchedulerConfig = @import("../scheduler/mod.zig").SchedulerConfig;
+const Task = @import("../scheduler/mod.zig").Task;
 const MailboxConfig = @import("../mailbox/mod.zig").MailboxConfig;
 const MailboxFactory = @import("../mailbox/mod.zig").MailboxFactory;
 const MailboxInterface = @import("../mailbox/mod.zig").MailboxInterface;
@@ -231,17 +234,77 @@ pub const ActorSystem = struct {
 
     /// 为Actor调度消息处理任务
     fn scheduleActorMessageProcessing(self: *Self, actor_ref: *ActorRef) !void {
-        // 这里需要从ActorRef获取底层的Actor
-        // 由于当前的ActorRef设计，我们暂时跳过这个实现
-        // 在实际应用中，需要重新设计ActorRef以便访问底层Actor
-        _ = self;
+        // 获取底层Actor - 这需要从ActorRef中提取
+        // 暂时使用一个简化的实现，直接调度消息处理
         _ = actor_ref;
 
-        // TODO: 实现Actor消息处理任务的调度
-        // const actor = actor_ref.getActor(); // 需要添加这个方法
-        // const task = try actor.createMessageProcessingTask(self.allocator);
-        // try self.scheduler.submit(task.*);
+        // 创建一个通用的消息处理任务
+        const task = try self.allocator.create(MessageProcessingTask);
+        task.* = MessageProcessingTask{
+            .task = Task{
+                .vtable = &MessageProcessingTask.vtable,
+            },
+            .system = self,
+            .allocator = self.allocator,
+        };
+
+        // 提交任务到调度器
+        try self.scheduler.submit(&task.task);
     }
+
+    /// 通用消息处理任务
+    const MessageProcessingTask = struct {
+        const TaskSelf = @This();
+
+        task: Task,
+        system: *ActorSystem,
+        allocator: Allocator,
+
+        const vtable = Task.VTable{
+            .execute = execute,
+            .deinit = deinitTask,
+            .getName = getTaskName,
+        };
+
+        fn execute(task: *Task) !void {
+            const self = @as(*TaskSelf, @fieldParentPtr("task", task));
+
+            // 遍历所有Actor，处理它们的消息
+            var iterator = self.system.actors.iterator();
+            while (iterator.next()) |entry| {
+                const actor_ref = entry.value_ptr.*;
+
+                // 尝试处理这个Actor的消息
+                // 这是一个简化的实现，实际应该更高效
+                _ = actor_ref;
+                // TODO: 实现实际的消息处理逻辑
+            }
+
+            // 重新调度自己，形成持续的消息处理循环
+            const next_task = try self.allocator.create(MessageProcessingTask);
+            next_task.* = MessageProcessingTask{
+                .task = Task{
+                    .vtable = &MessageProcessingTask.vtable,
+                },
+                .system = self.system,
+                .allocator = self.allocator,
+            };
+
+            // 延迟一点时间再调度，避免CPU占用过高
+            std.time.sleep(1 * std.time.ns_per_ms);
+            self.system.scheduler.submit(&next_task.task) catch {};
+        }
+
+        fn deinitTask(task: *Task) void {
+            const self = @as(*TaskSelf, @fieldParentPtr("task", task));
+            self.allocator.destroy(self);
+        }
+
+        fn getTaskName(task: *Task) []const u8 {
+            _ = task;
+            return "SystemMessageProcessing";
+        }
+    };
 
     pub fn createActorAt(self: *Self, props: ActorProps, parent_path: []const u8, name: ?[]const u8) !*ActorRef {
         if (self.state.load(.seq_cst) != .running) {
@@ -737,9 +800,6 @@ const ActorRefContext = struct {
         return a == b;
     }
 };
-
-const ActorBehavior = @import("actor.zig").ActorBehavior;
-const ActorContext = @import("actor.zig").ActorContext;
 
 fn generateActorName(allocator: Allocator) ![]const u8 {
     const timestamp = std.time.nanoTimestamp();

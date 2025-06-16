@@ -183,6 +183,15 @@ pub fn build(b: *std.Build) void {
     });
     fast_startup_test.root_module.addImport("zactor", zactor_module);
 
+    // 高性能Actor系统测试
+    const high_perf_actor_test = b.addExecutable(.{
+        .name = "high_perf_actor_test",
+        .root_source_file = b.path("examples/high_perf_actor_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    high_perf_actor_test.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
@@ -196,6 +205,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(simple_actor_benchmark);
     b.installArtifact(actor_system_diagnosis);
     b.installArtifact(fast_startup_test);
+    b.installArtifact(high_perf_actor_test);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -210,6 +220,7 @@ pub fn build(b: *std.Build) void {
     const run_simple_actor_benchmark = b.addRunArtifact(simple_actor_benchmark);
     const run_actor_system_diagnosis = b.addRunArtifact(actor_system_diagnosis);
     const run_fast_startup_test = b.addRunArtifact(fast_startup_test);
+    const run_high_perf_actor_test = b.addRunArtifact(high_perf_actor_test);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -246,6 +257,9 @@ pub fn build(b: *std.Build) void {
 
     const fast_startup_step = b.step("fast-startup-test", "Run fast startup test");
     fast_startup_step.dependOn(&run_fast_startup_test.step);
+
+    const high_perf_step = b.step("high-perf-test", "Run high-performance actor test");
+    high_perf_step.dependOn(&run_high_perf_actor_test.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{
