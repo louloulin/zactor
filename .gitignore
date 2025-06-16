@@ -16,6 +16,16 @@ zig-out/
 *.a
 *.lib
 
+# Binary executables (no extension)
+basic_example
+ping_pong_example
+performance_benchmark
+simple_supervisor_example
+supervisor_example
+
+# Any binary in zig-out/bin/
+zig-out/bin/*
+
 # IDE and editor files
 .vscode/
 .idea/

@@ -120,23 +120,26 @@ pub fn build(b: *std.Build) void {
     });
     benchmark.root_module.addImport("zactor", zactor_module);
 
-    b.installArtifact(benchmark);
-
-    const run_benchmark = b.addRunArtifact(benchmark);
-    const benchmark_step = b.step("benchmark", "Run performance benchmarks");
-    benchmark_step.dependOn(&run_benchmark.step);
-
-    // Add debug message flow test
-    const debug_flow = b.addExecutable(.{
-        .name = "debug_message_flow",
-        .root_source_file = b.path("debug_message_flow.zig"),
+    // Performance benchmark
+    const performance_benchmark = b.addExecutable(.{
+        .name = "performance_benchmark",
+        .root_source_file = b.path("benchmarks/performance_benchmark.zig"),
         .target = target,
         .optimize = optimize,
     });
-    debug_flow.root_module.addImport("zactor", zactor_module);
-    b.installArtifact(debug_flow);
+    performance_benchmark.root_module.addImport("zactor", zactor_module);
 
-    const run_debug_flow = b.addRunArtifact(debug_flow);
-    const debug_flow_step = b.step("debug-flow", "Run debug message flow test");
-    debug_flow_step.dependOn(&run_debug_flow.step);
+    b.installArtifact(benchmark);
+    b.installArtifact(performance_benchmark);
+
+    const run_benchmark = b.addRunArtifact(benchmark);
+    const run_performance_benchmark = b.addRunArtifact(performance_benchmark);
+    
+    const benchmark_step = b.step("benchmark", "Run performance benchmarks");
+    benchmark_step.dependOn(&run_benchmark.step);
+    
+    const perf_benchmark_step = b.step("perf-benchmark", "Run detailed performance benchmarks");
+    perf_benchmark_step.dependOn(&run_performance_benchmark.step);
+
+
 }
