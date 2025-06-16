@@ -139,37 +139,37 @@ pub const MessageStats = struct {
     }
 };
 
-// 消息配置
-pub const MessageConfig = struct {
-    // 消息池配置
-    enable_message_pool: bool = true,
-    pool_initial_size: u32 = 1000,
-    pool_max_size: u32 = 10000,
-    pool_growth_factor: f32 = 1.5,
-    
-    // 序列化配置
-    enable_compression: bool = false,
-    compression_threshold: u32 = 1024, // 字节
-    
-    // 统计配置
-    enable_statistics: bool = true,
-    
-    // 优先级配置
-    enable_priority_queue: bool = false,
-    max_priority_levels: u8 = 5,
-    
-    // 批处理配置
-    enable_batching: bool = true,
-    max_batch_size: u32 = 100,
-    
-    // 超时配置
-    default_timeout_ms: u32 = 5000,
-    enable_message_timeout: bool = false,
-    
-    // 调试配置
-    enable_message_tracing: bool = false,
-    trace_buffer_size: u32 = 1000,
-};
+// 消息配置 - 已在message.zig中定义
+// pub const MessageConfig = struct {
+//     // 消息池配置
+//     enable_message_pool: bool = true,
+//     pool_initial_size: u32 = 1000,
+//     pool_max_size: u32 = 10000,
+//     pool_growth_factor: f32 = 1.5,
+//     
+//     // 序列化配置
+//     enable_compression: bool = false,
+//     compression_threshold: u32 = 1024, // 字节
+//     
+//     // 统计配置
+//     enable_statistics: bool = true,
+//     
+//     // 优先级配置
+//     enable_priority_queue: bool = false,
+//     max_priority_levels: u8 = 5,
+//     
+//     // 批处理配置
+//     enable_batching: bool = true,
+//     max_batch_size: u32 = 100,
+//     
+//     // 超时配置
+//     default_timeout_ms: u32 = 5000,
+//     enable_message_timeout: bool = false,
+//     
+//     // 调试配置
+//     enable_message_tracing: bool = false,
+//     trace_buffer_size: u32 = 1000,
+// };
 
 // 消息工厂
 pub const MessageFactory = struct {

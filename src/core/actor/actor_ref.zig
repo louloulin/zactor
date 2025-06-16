@@ -115,7 +115,7 @@ pub const LocalActorRef = struct {
     }
     
     fn tell(actor_ref: *ActorRef, message: anytype, sender: ?*ActorRef) !void {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 创建消息
         const msg = try Message.create(actor_ref.allocator, message);
@@ -123,7 +123,7 @@ pub const LocalActorRef = struct {
         // 设置发送者
         if (sender) |s| {
             if (s.isLocal()) {
-                const local_sender = @fieldParentPtr(LocalActorRef, "actor_ref", s);
+                const local_sender = @as(*LocalActorRef, @fieldParentPtr("actor_ref", s));
                 try self.actor.send(msg, local_sender.actor);
             } else {
                 // 远程发送者，需要序列化路径信息
@@ -135,7 +135,7 @@ pub const LocalActorRef = struct {
     }
     
     fn ask(actor_ref: *ActorRef, message: anytype, timeout_ms: u64) !*Message {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 创建临时Actor来接收回复
         const temp_actor = try createTempActor(actor_ref.allocator, timeout_ms);
@@ -150,11 +150,11 @@ pub const LocalActorRef = struct {
     }
     
     fn forward(actor_ref: *ActorRef, message: *Message, sender: *ActorRef) !void {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 保持原始发送者信息
         if (sender.isLocal()) {
-            const local_sender = @fieldParentPtr(LocalActorRef, "actor_ref", sender);
+            const local_sender = @as(*LocalActorRef, @fieldParentPtr("actor_ref", sender));
             try self.actor.send(message, local_sender.actor);
         } else {
             try self.actor.send(message, null);
@@ -167,7 +167,7 @@ pub const LocalActorRef = struct {
     }
     
     fn isTerminated(actor_ref: *ActorRef) bool {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         return self.actor.isStopped();
     }
     
@@ -178,8 +178,8 @@ pub const LocalActorRef = struct {
     fn compareTo(actor_ref: *ActorRef, other: *ActorRef) bool {
         if (!other.isLocal()) return false;
         
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
-        const other_local = @fieldParentPtr(LocalActorRef, "actor_ref", other);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
+        const other_local = @as(*LocalActorRef, @fieldParentPtr("actor_ref", other));
         
         return self.actor == other_local.actor;
     }
@@ -232,7 +232,7 @@ pub const RemoteActorRef = struct {
     }
     
     fn tell(actor_ref: *ActorRef, message: anytype, sender: ?*ActorRef) !void {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 序列化消息
         const serialized = try self.serializer.serialize(message, actor_ref.allocator);
@@ -252,7 +252,7 @@ pub const RemoteActorRef = struct {
     }
     
     fn ask(actor_ref: *ActorRef, message: anytype, timeout_ms: u64) !*Message {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 创建回复通道
         const reply_channel = try createReplyChannel(actor_ref.allocator, timeout_ms);
@@ -280,7 +280,7 @@ pub const RemoteActorRef = struct {
     }
     
     fn forward(actor_ref: *ActorRef, message: *Message, sender: *ActorRef) !void {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         
         // 序列化消息（保持原始发送者信息）
         const serialized = try self.serializer.serializeMessage(message, actor_ref.allocator);
@@ -306,7 +306,7 @@ pub const RemoteActorRef = struct {
     }
     
     fn isTerminated(actor_ref: *ActorRef) bool {
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
         // 检查远程连接状态
         return !self.transport.isConnected(self.remote_address);
     }
@@ -318,8 +318,8 @@ pub const RemoteActorRef = struct {
     fn compareTo(actor_ref: *ActorRef, other: *ActorRef) bool {
         if (other.isLocal()) return false;
         
-        const self = @fieldParentPtr(Self, "actor_ref", actor_ref);
-        const other_remote = @fieldParentPtr(RemoteActorRef, "actor_ref", other);
+        const self = @as(*Self, @fieldParentPtr("actor_ref", actor_ref));
+        const other_remote = @as(*RemoteActorRef, @fieldParentPtr("actor_ref", other));
         
         return std.mem.eql(u8, self.remote_address, other_remote.remote_address) and
                std.mem.eql(u8, self.actor_ref.path.toString(self.actor_ref.allocator) catch "", 
@@ -451,6 +451,7 @@ test "ActorRef types" {
 test "LocalActorRef" {
     const testing = std.testing;
     const allocator = testing.allocator;
+    _ = allocator;
     
     // 需要实际的Actor实例来测试
     // 暂时跳过，等待Actor模块完成

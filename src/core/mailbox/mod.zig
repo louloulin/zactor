@@ -111,7 +111,6 @@ pub const MailboxFactory = struct {
     pub fn create(config: MailboxConfig, allocator: Allocator) !MailboxInterface {
         switch (config.mailbox_type) {
             .standard => {
-                const StandardMailbox = @import("standard.zig").StandardMailbox;
                 const mailbox = try allocator.create(StandardMailbox);
                 mailbox.* = try StandardMailbox.init(allocator, config);
                 return MailboxInterface{
@@ -120,7 +119,6 @@ pub const MailboxFactory = struct {
                 };
             },
             .fast => {
-                const FastMailbox = @import("fast.zig").FastMailbox;
                 const mailbox = try allocator.create(FastMailbox);
                 mailbox.* = try FastMailbox.init(allocator, config);
                 return MailboxInterface{
@@ -129,7 +127,6 @@ pub const MailboxFactory = struct {
                 };
             },
             .high_perf => {
-                const HighPerfMailbox = @import("high_perf.zig").HighPerfMailbox;
                 const mailbox = try allocator.create(HighPerfMailbox);
                 mailbox.* = try HighPerfMailbox.init(allocator, config);
                 return MailboxInterface{
@@ -138,7 +135,6 @@ pub const MailboxFactory = struct {
                 };
             },
             .ultra_fast => {
-                const UltraFastMailbox = @import("ultra_fast.zig").UltraFastMailbox;
                 const mailbox = try allocator.create(UltraFastMailbox);
                 mailbox.* = try UltraFastMailbox.init(allocator, config);
                 return MailboxInterface{

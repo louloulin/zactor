@@ -78,8 +78,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         const Self = @This();
         
         // 缓存行对齐的原子变量
-        head: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
-        tail: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
+        head: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
+    tail: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
         
         buffer: []T,
         capacity: usize,
@@ -99,8 +99,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
             errdefer allocator.free(buffer);
             
             self.* = Self{
-                .head = atomic.Atomic(usize).init(0),
-                .tail = atomic.Atomic(usize).init(0),
+                .head = std.atomic.Value(usize).init(0),
+            .tail = std.atomic.Value(usize).init(0),
                 .buffer = buffer,
                 .capacity = capacity,
                 .mask = capacity - 1,
@@ -119,14 +119,14 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         
         // 写入单个元素
         pub fn write(self: *Self, item: T) RingBufferError!void {
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             
             // 检查是否已满
             if (head - tail >= self.capacity) {
                 if (self.config.allow_overwrite) {
                     // 覆盖模式：移动tail
-                    _ = self.tail.fetchAdd(1, .Release);
+                    _ = self.tail.fetchAdd(1, .release);
                     self.stats.total_overwrites += 1;
                 } else {
                     return RingBufferError.BufferFull;
@@ -137,7 +137,7 @@ pub fn SPSCRingBuffer(comptime T: type) type {
             self.buffer[head & self.mask] = item;
             
             // 更新head
-            _ = self.head.fetchAdd(1, .Release);
+            _ = self.head.fetchAdd(1, .release);
             
             // 更新统计信息
             self.stats.total_writes += 1;
@@ -146,8 +146,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         
         // 读取单个元素
         pub fn read(self: *Self) RingBufferError!T {
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             
             // 检查是否为空
             if (head == tail) {
@@ -159,7 +159,7 @@ pub fn SPSCRingBuffer(comptime T: type) type {
             const item = self.buffer[tail & self.mask];
             
             // 更新tail
-            _ = self.tail.fetchAdd(1, .Release);
+            _ = self.tail.fetchAdd(1, .release);
             
             // 更新统计信息
             self.stats.total_reads += 1;
@@ -204,8 +204,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         
         // 查看下一个元素（不移除）
         pub fn peek(self: *Self) RingBufferError!T {
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             
             if (head == tail) {
                 return RingBufferError.BufferEmpty;
@@ -216,8 +216,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         
         // 获取当前大小
         pub fn size(self: *Self) usize {
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             return head - tail;
         }
         
@@ -238,8 +238,8 @@ pub fn SPSCRingBuffer(comptime T: type) type {
         
         // 清空缓冲区
         pub fn clear(self: *Self) void {
-            self.head.store(0, .Release);
-            self.tail.store(0, .Release);
+            self.head.store(0, .release);
+            self.tail.store(0, .release);
         }
         
         // 获取统计信息
@@ -270,10 +270,10 @@ pub fn MPMCRingBuffer(comptime T: type) type {
         const Self = @This();
         
         // 使用更强的同步原语
-        head: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
-        tail: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
-        write_cursor: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
-        read_cursor: atomic.Atomic(usize) align(CACHE_LINE_SIZE),
+        head: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
+    tail: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
+    write_cursor: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
+    read_cursor: std.atomic.Value(usize) align(CACHE_LINE_SIZE),
         
         buffer: []T,
         capacity: usize,
@@ -293,10 +293,10 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             errdefer allocator.free(buffer);
             
             self.* = Self{
-                .head = atomic.Atomic(usize).init(0),
-                .tail = atomic.Atomic(usize).init(0),
-                .write_cursor = atomic.Atomic(usize).init(0),
-                .read_cursor = atomic.Atomic(usize).init(0),
+                .head = std.atomic.Value(usize).init(0),
+            .tail = std.atomic.Value(usize).init(0),
+            .write_cursor = std.atomic.Value(usize).init(0),
+            .read_cursor = std.atomic.Value(usize).init(0),
                 .buffer = buffer,
                 .capacity = capacity,
                 .mask = capacity - 1,
@@ -319,12 +319,12 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
             
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             
             if (head - tail >= self.capacity) {
                 if (self.config.allow_overwrite) {
-                    _ = self.tail.fetchAdd(1, .Release);
+                    _ = self.tail.fetchAdd(1, .release);
                     self.stats.total_overwrites += 1;
                 } else {
                     return RingBufferError.BufferFull;
@@ -332,7 +332,7 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             }
             
             self.buffer[head & self.mask] = item;
-            _ = self.head.fetchAdd(1, .Release);
+            _ = self.head.fetchAdd(1, .release);
             
             self.stats.total_writes += 1;
             self.updateStats();
@@ -343,8 +343,8 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
             
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             
             if (head == tail) {
                 self.stats.total_underruns += 1;
@@ -352,7 +352,7 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             }
             
             const item = self.buffer[tail & self.mask];
-            _ = self.tail.fetchAdd(1, .Release);
+            _ = self.tail.fetchAdd(1, .release);
             
             self.stats.total_reads += 1;
             self.updateStats();
@@ -365,8 +365,8 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
             
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             return head - tail;
         }
         
@@ -382,8 +382,8 @@ pub fn MPMCRingBuffer(comptime T: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
             
-            self.head.store(0, .Release);
-            self.tail.store(0, .Release);
+            self.head.store(0, .release);
+            self.tail.store(0, .release);
         }
         
         pub fn getStats(self: *Self) RingBufferStats {
@@ -395,7 +395,7 @@ pub fn MPMCRingBuffer(comptime T: type) type {
         }
         
         fn updateStats(self: *Self) void {
-            const current_size = self.head.load(.Acquire) - self.tail.load(.Acquire);
+            const current_size = self.head.load(.acquire) - self.tail.load(.acquire);
             self.stats.current_size = current_size;
             if (current_size > self.stats.peak_usage) {
                 self.stats.peak_usage = current_size;

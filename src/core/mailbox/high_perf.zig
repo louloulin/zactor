@@ -8,7 +8,7 @@ const Message = @import("../message/mod.zig").Message;
 const MailboxConfig = @import("mod.zig").MailboxConfig;
 const MailboxStats = @import("mod.zig").MailboxStats;
 const MailboxInterface = @import("mod.zig").MailboxInterface;
-const MessagePool = @import("../../utils/message_pool.zig").MessagePool;
+const ObjectPool = @import("../../utils/memory.zig").ObjectPool;
 
 // 高性能邮箱实现 - 使用内存池和SIMD优化
 pub const HighPerfMailbox = struct {
@@ -22,7 +22,7 @@ pub const HighPerfMailbox = struct {
     mask: u32, // 用于快速模运算
     
     // 内存池用于消息分配
-    message_pool: ?*MessagePool,
+    message_pool: ?*ObjectPool(Message),
     
     // 统计信息
     stats: ?MailboxStats,
@@ -49,10 +49,10 @@ pub const HighPerfMailbox = struct {
         const buffer = try allocator.alloc(Message, actual_capacity);
         
         // 初始化内存池（如果启用）
-        var message_pool: ?*MessagePool = null;
+        var message_pool: ?*ObjectPool(Message) = null;
         if (config.use_memory_pool) {
-            message_pool = try allocator.create(MessagePool);
-            message_pool.?.* = try MessagePool.init(allocator, config.pool_size orelse 1000);
+            message_pool = try allocator.create(ObjectPool(Message));
+            message_pool.?.* = try ObjectPool(Message).init(allocator, config.pool_size orelse 1000);
         }
         
         return Self{
@@ -106,9 +106,9 @@ pub const HighPerfMailbox = struct {
     
     // 实际实现方法
     pub fn sendMessage(self: *Self, message: Message) !void {
-        const current_tail = self.tail.load(.Acquire);
+        const current_tail = self.tail.load(.acquire);
         const next_tail = (current_tail + 1) & self.mask;
-        const current_head = self.head.load(.Acquire);
+        const current_head = self.head.load(.acquire);
         
         // 检查队列是否已满
         if (next_tail == current_head) {
@@ -120,10 +120,10 @@ pub const HighPerfMailbox = struct {
         
         // 使用内存屏障确保写入顺序
         self.buffer[current_tail] = message;
-        std.atomic.fence(.Release);
+        std.atomic.fence(.release);
         
         // 更新tail指针
-        self.tail.store(next_tail, .Release);
+        self.tail.store(next_tail, .release);
         
         if (self.stats) |*stats| {
             stats.incrementSent();
@@ -133,8 +133,8 @@ pub const HighPerfMailbox = struct {
     }
     
     pub fn receiveMessage(self: *Self) ?Message {
-        const current_head = self.head.load(.Acquire);
-        const current_tail = self.tail.load(.Acquire);
+        const current_head = self.head.load(.acquire);
+        const current_tail = self.tail.load(.acquire);
         
         // 检查队列是否为空
         if (current_head == current_tail) {
@@ -143,11 +143,11 @@ pub const HighPerfMailbox = struct {
         
         // 读取消息
         const message = self.buffer[current_head];
-        std.atomic.fence(.Release);
+        std.atomic.fence(.release);
         
         // 更新head指针
         const next_head = (current_head + 1) & self.mask;
-        self.head.store(next_head, .Release);
+        self.head.store(next_head, .release);
         
         if (self.stats) |*stats| {
             stats.incrementReceived();
@@ -157,14 +157,14 @@ pub const HighPerfMailbox = struct {
     }
     
     pub fn isEmptyImpl(self: *const Self) bool {
-        const current_head = self.head.load(.Acquire);
-        const current_tail = self.tail.load(.Acquire);
+        const current_head = self.head.load(.acquire);
+        const current_tail = self.tail.load(.acquire);
         return current_head == current_tail;
     }
     
     pub fn sizeImpl(self: *const Self) u32 {
-        const current_head = self.head.load(.Acquire);
-        const current_tail = self.tail.load(.Acquire);
+        const current_head = self.head.load(.acquire);
+        const current_tail = self.tail.load(.acquire);
         return (current_tail - current_head) & self.mask;
     }
     
@@ -196,15 +196,14 @@ pub const HighPerfMailbox = struct {
             return sent_count;
         }
         
-        const current_tail = self.tail.load(.Acquire);
-        const current_head = self.head.load(.Acquire);
+        const current_tail = self.tail.load(.acquire);
+        const current_head = self.head.load(.acquire);
         
         // 计算可用空间
-        const available_space = if (current_head > current_tail) {
+        const available_space = if (current_head > current_tail) 
             current_head - current_tail - 1
-        } else {
-            self.capacity - (current_tail - current_head) - 1
-        };
+        else 
+            self.capacity - (current_tail - current_head) - 1;
         
         const batch_size = @min(messages.len, available_space);
         if (batch_size == 0) {
@@ -238,10 +237,10 @@ pub const HighPerfMailbox = struct {
         }
         
         // 内存屏障确保写入完成
-        std.atomic.fence(.Release);
+        std.atomic.fence(.release);
         
         // 更新tail指针
-        self.tail.store(tail_pos, .Release);
+        self.tail.store(tail_pos, .release);
         
         if (self.stats) |*stats| {
             var i: u32 = 0;
@@ -270,8 +269,8 @@ pub const HighPerfMailbox = struct {
             return received_count;
         }
         
-        const current_head = self.head.load(.Acquire);
-        const current_tail = self.tail.load(.Acquire);
+        const current_head = self.head.load(.acquire);
+        const current_tail = self.tail.load(.acquire);
         
         // 计算可用消息数量
         const available_messages = (current_tail - current_head) & self.mask;
@@ -308,10 +307,10 @@ pub const HighPerfMailbox = struct {
         }
         
         // 内存屏障确保读取完成
-        std.atomic.fence(.Release);
+        std.atomic.fence(.release);
         
         // 更新head指针
-        self.head.store(head_pos, .Release);
+        self.head.store(head_pos, .release);
         
         if (self.stats) |*stats| {
             var i: u32 = 0;
@@ -362,8 +361,8 @@ pub const HighPerfMailbox = struct {
     }
     
     pub fn peek(self: *const Self) ?Message {
-        const current_head = self.head.load(.Acquire);
-        const current_tail = self.tail.load(.Acquire);
+        const current_head = self.head.load(.acquire);
+        const current_tail = self.tail.load(.acquire);
         
         if (current_head == current_tail) {
             return null;

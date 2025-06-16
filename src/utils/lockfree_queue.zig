@@ -91,7 +91,7 @@ pub fn LockFreeQueue(comptime T: type) type {
             // 使用缓存的tail检查队列是否已满
             if (next_head == self.tail_cache) {
                 // 更新缓存并再次检查
-                self.tail_cache = self.tail.load(.Acquire);
+                self.tail_cache = self.tail.load(.acquire);
                 if (next_head == self.tail_cache) {
                     return false; // 队列已满
                 }
@@ -99,7 +99,7 @@ pub fn LockFreeQueue(comptime T: type) type {
             
             // 存储项目并更新head
             self.buffer[head] = item;
-            self.head.store(next_head, .Release);
+            self.head.store(next_head, .release);
             return true;
         }
         
@@ -111,7 +111,7 @@ pub fn LockFreeQueue(comptime T: type) type {
             // 使用缓存的head检查队列是否为空
             if (safe_tail == (self.head_cache & self.mask)) {
                 // 更新缓存并再次检查
-                self.head_cache = self.head.load(.Acquire);
+                self.head_cache = self.head.load(.acquire);
                 if (safe_tail == (self.head_cache & self.mask)) {
                     return null; // 队列为空
                 }
@@ -120,7 +120,7 @@ pub fn LockFreeQueue(comptime T: type) type {
             // 加载项目并更新tail
             const item = self.buffer[safe_tail];
             const next_tail = (safe_tail + 1) & self.mask;
-            self.tail.store(next_tail, .Release);
+            self.tail.store(next_tail, .release);
             return item;
         }
         
@@ -130,12 +130,11 @@ pub fn LockFreeQueue(comptime T: type) type {
             
             // 优化：预先检查可用空间
             const head = self.head.load(.Monotonic);
-            const tail = self.tail.load(.Acquire);
-            const available_space = if (tail > head) {
+            const tail = self.tail.load(.acquire);
+            const available_space = if (tail > head) 
                 tail - head - 1
-            } else {
-                self.capacity - (head - tail) - 1
-            };
+            else 
+                self.capacity - (head - tail) - 1;
             
             const batch_size = @min(items.len, available_space);
             
@@ -155,7 +154,7 @@ pub fn LockFreeQueue(comptime T: type) type {
             var popped: u32 = 0;
             
             // 优化：预先检查可用项目数量
-            const head = self.head.load(.Acquire);
+            const head = self.head.load(.acquire);
             const tail = self.tail.load(.Monotonic);
             const available_items = (head - tail) & self.mask;
             
@@ -177,19 +176,19 @@ pub fn LockFreeQueue(comptime T: type) type {
         // 状态查询
         pub fn isEmpty(self: *Self) bool {
             const tail = self.tail.load(.Monotonic);
-            const head = self.head.load(.Acquire);
+            const head = self.head.load(.acquire);
             return tail == head;
         }
         
         pub fn isFull(self: *Self) bool {
             const head = self.head.load(.Monotonic);
-            const tail = self.tail.load(.Acquire);
+            const tail = self.tail.load(.acquire);
             const next_head = (head + 1) & self.mask;
             return next_head == tail;
         }
         
         pub fn size(self: *Self) u32 {
-            const head = self.head.load(.Acquire);
+            const head = self.head.load(.acquire);
             const tail = self.tail.load(.Monotonic);
             return (head - tail) & self.mask;
         }
@@ -201,7 +200,7 @@ pub fn LockFreeQueue(comptime T: type) type {
         // 高级操作
         pub fn peek(self: *Self) ?T {
             const tail = self.tail.load(.Monotonic);
-            const head = self.head.load(.Acquire);
+            const head = self.head.load(.acquire);
             
             if (tail == head) {
                 return null; // 队列为空
@@ -260,7 +259,7 @@ pub fn LockFreeQueue(comptime T: type) type {
         // 调试信息
         pub fn debugInfo(self: *Self) struct { head: u32, tail: u32, size: u32, capacity: u32 } {
             return .{
-                .head = self.head.load(.Acquire),
+                .head = self.head.load(.acquire),
                 .tail = self.tail.load(.Monotonic),
                 .size = self.size(),
                 .capacity = self.capacity,
@@ -307,9 +306,9 @@ pub fn MPMCQueue(comptime T: type) type {
         
         pub fn push(self: *Self, item: T) bool {
             while (true) {
-                const head = self.head.load(.Acquire);
+                const head = self.head.load(.acquire);
                 const next_head = (head + 1) & self.mask;
-                const tail = self.tail.load(.Acquire);
+                const tail = self.tail.load(.acquire);
                 
                 if (next_head == tail) {
                     return false; // 队列已满
@@ -328,8 +327,8 @@ pub fn MPMCQueue(comptime T: type) type {
         
         pub fn pop(self: *Self) ?T {
             while (true) {
-                const tail = self.tail.load(.Acquire);
-                const head = self.head.load(.Acquire);
+                const tail = self.tail.load(.acquire);
+                const head = self.head.load(.acquire);
                 
                 if (tail == head) {
                     return null; // 队列为空
@@ -348,14 +347,14 @@ pub fn MPMCQueue(comptime T: type) type {
         }
         
         pub fn isEmpty(self: *Self) bool {
-            const tail = self.tail.load(.Acquire);
-            const head = self.head.load(.Acquire);
+            const tail = self.tail.load(.acquire);
+            const head = self.head.load(.acquire);
             return tail == head;
         }
         
         pub fn size(self: *Self) u32 {
-            const head = self.head.load(.Acquire);
-            const tail = self.tail.load(.Acquire);
+            const head = self.head.load(.acquire);
+            const tail = self.tail.load(.acquire);
             return (head - tail) & self.mask;
         }
     };

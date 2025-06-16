@@ -32,40 +32,34 @@ pub const utils = struct {
 };
 
 // Re-export main components for backward compatibility
-pub const Actor = @import("actor.zig").Actor;
-pub const ActorContext = @import("actor.zig").ActorContext;
-pub const ActorSystem = @import("actor_system.zig").ActorSystem;
-pub const Message = @import("message.zig").Message;
-pub const SystemMessage = @import("message.zig").SystemMessage;
-pub const ControlMessage = @import("message.zig").ControlMessage;
-pub const Mailbox = @import("mailbox.zig").Mailbox;
-pub const ActorRef = @import("actor_ref.zig").ActorRef;
-pub const Scheduler = @import("scheduler.zig").Scheduler;
-pub const Supervisor = @import("supervisor.zig").Supervisor;
-pub const SupervisorStrategy = @import("supervisor.zig").SupervisorStrategy;
-pub const SupervisorConfig = @import("supervisor.zig").SupervisorConfig;
+pub const Actor = core.actor.Actor;
+pub const ActorContext = core.actor.ActorContext;
+pub const ActorSystem = core.system.ActorSystem;
+pub const Message = core.message.Message;
+pub const SystemMessage = core.message.SystemMessage;
+pub const ControlMessage = core.message.ControlMessage;
+pub const Mailbox = core.mailbox.Mailbox;
+pub const ActorRef = core.actor.ActorRef;
+pub const Scheduler = core.scheduler.Scheduler;
+pub const Supervisor = core.actor.Supervisor;
+pub const SupervisorStrategy = core.actor.SupervisorStrategy;
+pub const SupervisorConfig = core.actor.SupervisorConfig;
 
 // Core types
 pub const ActorId = u64;
 pub const MessageId = u64;
 
-pub const ActorError = error{
-    ActorNotFound,
-    MailboxFull,
-    SystemShutdown,
-    InvalidMessage,
-    OutOfMemory,
-    ActorFailed,
-    SupervisorError,
-};
+// Re-export core errors
+pub const ActorError = core.actor.ActorError;
+pub const SystemError = core.system.SystemError;
+pub const MessageError = core.message.MessageError;
+pub const MailboxError = core.mailbox.MailboxError;
+pub const SchedulerError = core.scheduler.SchedulerError;
+pub const UtilsError = utils.UtilsError;
 
-pub const ActorState = enum(u8) {
-    created = 0,
-    running = 1,
-    suspended = 2,
-    stopped = 3,
-    failed = 4,
-};
+// Re-export core states
+pub const ActorState = core.actor.ActorState;
+pub const SystemState = core.system.SystemState;
 
 // Test to ensure the module compiles
 test "zactor module compilation" {
@@ -83,105 +77,77 @@ test "zactor module compilation" {
     try testing.expect(state == ActorState.created);
 }
 
-// Performance configuration
-pub const Config = struct {
-    max_actors: u32 = 10000,
-    mailbox_capacity: u32 = 1000,
-    scheduler_threads: u32 = 0, // 0 = auto-detect
-    enable_work_stealing: bool = true,
-    enable_numa_awareness: bool = false,
-    message_pool_size: u32 = 10000,
-};
+// Re-export configuration types
+pub const Config = core.system.SystemConfiguration;
+pub const ActorConfig = core.actor.ActorConfig;
+pub const MailboxConfig = core.mailbox.MailboxConfig;
+pub const SchedulerConfig = core.scheduler.SchedulerConfig;
+pub const UtilsConfig = utils.UtilsConfig;
 
 // Global configuration instance
-pub var config: Config = Config{};
+pub var config: Config = Config.default();
 
 // Initialize ZActor with custom configuration
 pub fn init(cfg: Config) void {
     config = cfg;
 }
 
-// Utility functions for performance measurement
+// Re-export statistics types
+pub const SystemStats = core.system.SystemStats;
+pub const ActorStats = core.actor.ActorStats;
+pub const MailboxStats = core.mailbox.MailboxStats;
+pub const SchedulerStats = core.scheduler.SchedulerStats;
+pub const UtilsStats = utils.UtilsStats;
+
+// Unified metrics interface
 pub const Metrics = struct {
-    messages_sent: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    messages_received: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    actors_created: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    actors_destroyed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-    actor_failures: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-
-    pub fn incrementMessagesSent(self: *Metrics) void {
-        _ = self.messages_sent.fetchAdd(1, .monotonic);
+    system_stats: SystemStats,
+    utils_stats: UtilsStats,
+    
+    pub fn init() Metrics {
+        return Metrics{
+            .system_stats = SystemStats.init(),
+            .utils_stats = UtilsStats.init(),
+        };
     }
-
-    pub fn incrementMessagesReceived(self: *Metrics) void {
-        _ = self.messages_received.fetchAdd(1, .monotonic);
-    }
-
-    pub fn incrementActorsCreated(self: *Metrics) void {
-        _ = self.actors_created.fetchAdd(1, .monotonic);
-    }
-
-    pub fn incrementActorsDestroyed(self: *Metrics) void {
-        _ = self.actors_destroyed.fetchAdd(1, .monotonic);
-    }
-
-    pub fn incrementActorFailures(self: *Metrics) void {
-        _ = self.actor_failures.fetchAdd(1, .monotonic);
-    }
-
-    pub fn getMessagesSent(self: *const Metrics) u64 {
-        return self.messages_sent.load(.monotonic);
-    }
-
-    pub fn getMessagesReceived(self: *const Metrics) u64 {
-        return self.messages_received.load(.monotonic);
-    }
-
-    pub fn getActorsCreated(self: *const Metrics) u64 {
-        return self.actors_created.load(.monotonic);
-    }
-
-    pub fn getActorsDestroyed(self: *const Metrics) u64 {
-        return self.actors_destroyed.load(.monotonic);
-    }
-
-    pub fn getActorFailures(self: *const Metrics) u64 {
-        return self.actor_failures.load(.monotonic);
-    }
-
+    
     pub fn reset(self: *Metrics) void {
-        self.messages_sent.store(0, .monotonic);
-        self.messages_received.store(0, .monotonic);
-        self.actors_created.store(0, .monotonic);
-        self.actors_destroyed.store(0, .monotonic);
-        self.actor_failures.store(0, .monotonic);
+        self.system_stats.reset();
+        self.utils_stats.reset();
     }
-
+    
     pub fn print(self: *const Metrics) void {
-        std.log.info("ZActor Metrics:", .{});
-        std.log.info("  Messages Sent: {}", .{self.getMessagesSent()});
-        std.log.info("  Messages Received: {}", .{self.getMessagesReceived()});
-        std.log.info("  Actors Created: {}", .{self.getActorsCreated()});
-        std.log.info("  Actors Destroyed: {}", .{self.getActorsDestroyed()});
-        std.log.info("  Actor Failures: {}", .{self.getActorFailures()});
+        std.log.info("ZActor Unified Metrics:", .{});
+        self.system_stats.print();
+        self.utils_stats.print();
     }
 };
 
 // Global metrics instance
-pub var metrics: Metrics = Metrics{};
+pub var metrics: Metrics = Metrics.init();
 
-test "metrics functionality" {
-    var test_metrics = Metrics{};
-
-    test_metrics.incrementMessagesSent();
-    test_metrics.incrementMessagesReceived();
-    test_metrics.incrementActorsCreated();
-
-    try testing.expect(test_metrics.getMessagesSent() == 1);
-    try testing.expect(test_metrics.getMessagesReceived() == 1);
-    try testing.expect(test_metrics.getActorsCreated() == 1);
-    try testing.expect(test_metrics.getActorsDestroyed() == 0);
-
+test "unified metrics functionality" {
+    var test_metrics = Metrics.init();
+    
+    // Test basic functionality
     test_metrics.reset();
-    try testing.expect(test_metrics.getMessagesSent() == 0);
+    
+    // Verify metrics can be printed without error
+    test_metrics.print();
+}
+
+test "core module integration" {
+    // Test that all core modules are accessible
+    const allocator = testing.allocator;
+    _ = allocator;
+    
+    // Test type accessibility
+    const actor_state = ActorState.created;
+    const system_state = SystemState.stopped;
+    _ = actor_state;
+    _ = system_state;
+    
+    // Test configuration
+    const cfg = Config.development();
+    _ = cfg;
 }

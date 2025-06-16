@@ -148,7 +148,7 @@ pub const ActorContext = struct {
     pub fn become(self: *Self, behavior: ActorBehavior) !void {
         // 切换Actor行为
         if (self.self_ref.isLocal()) {
-            const local_ref = @fieldParentPtr(LocalActorRef, "actor_ref", self.self_ref);
+            const local_ref = @as(*LocalActorRef, @fieldParentPtr("actor_ref", self.self_ref));
             try local_ref.actor.setBehavior(behavior);
         }
     }
@@ -156,13 +156,13 @@ pub const ActorContext = struct {
     pub fn unbecome(self: *Self) !void {
         // 恢复之前的行为
         if (self.self_ref.isLocal()) {
-            const local_ref = @fieldParentPtr(LocalActorRef, "actor_ref", self.self_ref);
+            const local_ref = @as(*LocalActorRef, @fieldParentPtr("actor_ref", self.self_ref));
             try local_ref.actor.revertBehavior();
         }
     }
     
     // 消息暂存
-    pub fn stash(self: *Self, message: *Message) !void {
+    pub fn stashMessage(self: *Self, message: *Message) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
         
@@ -362,7 +362,7 @@ fn generateChildName(allocator: Allocator) ![]const u8 {
 // 测试
 test "ActorContext creation" {
     const testing = std.testing;
-    const allocator = testing.allocator;
+    _ = testing;
     
     // 需要实际的ActorRef和ActorSystem来测试
     // 暂时跳过，等待相关模块完成
@@ -390,6 +390,7 @@ test "ActorProps" {
 
 test "TerminatedMessage" {
     const testing = std.testing;
+    _ = testing;
     
     // 需要实际的ActorRef来测试
     // 暂时跳过，等待ActorRef模块完成

@@ -32,7 +32,7 @@ pub const TaskPriority = enum(u8) {
 };
 
 // 任务状态
-pub const TaskState = enum {
+pub const TaskState = enum(u8) {
     Pending,
     Running,
     Completed,
@@ -44,7 +44,7 @@ pub const TaskState = enum {
 pub const Task = struct {
     id: u64,
     priority: TaskPriority,
-    state: atomic.Atomic(TaskState),
+    state: std.atomic.Value(TaskState),
     execute_fn: *const fn (ctx: *anyopaque) anyerror!void,
     context: *anyopaque,
     result: ?anyerror = null,
@@ -56,7 +56,7 @@ pub const Task = struct {
         return Task{
             .id = id,
             .priority = priority,
-            .state = atomic.Atomic(TaskState).init(.Pending),
+            .state = std.atomic.Value(TaskState).init(.Pending),
             .execute_fn = execute_fn,
             .context = context,
             .created_at = std.time.milliTimestamp(),
@@ -64,30 +64,31 @@ pub const Task = struct {
     }
     
     pub fn execute(self: *Task) void {
-        self.state.store(.Running, .Release);
+        self.state.store(.Running, .release);
         self.started_at = std.time.milliTimestamp();
         
-        self.result = self.execute_fn(self.context);
+        if (self.execute_fn(self.context)) {
+            self.result = null;
+            self.state.store(.Completed, .release);
+        } else |err| {
+            self.result = err;
+            self.state.store(.Failed, .release);
+        }
         
         self.completed_at = std.time.milliTimestamp();
-        if (self.result) |_| {
-            self.state.store(.Failed, .Release);
-        } else {
-            self.state.store(.Completed, .Release);
-        }
     }
     
     pub fn cancel(self: *Task) bool {
-        const current_state = self.state.load(.Acquire);
+        const current_state = self.state.load(.acquire);
         if (current_state == .Pending) {
-            self.state.store(.Cancelled, .Release);
+            self.state.store(.Cancelled, .release);
             return true;
         }
         return false;
     }
     
     pub fn getState(self: *const Task) TaskState {
-        return self.state.load(.Acquire);
+        return self.state.load(.acquire);
     }
     
     pub fn isCompleted(self: *const Task) bool {
@@ -192,8 +193,8 @@ const WorkerThread = struct {
     thread: ?Thread,
     pool: *ThreadPool,
     local_queue: WorkQueue,
-    is_running: atomic.Atomic(bool),
-    tasks_executed: atomic.Atomic(u64),
+    is_running: std.atomic.Value(bool),
+    tasks_executed: std.atomic.Value(u64),
     
     pub fn init(id: u32, pool: *ThreadPool, allocator: Allocator) WorkerThread {
         return WorkerThread{
@@ -201,8 +202,8 @@ const WorkerThread = struct {
             .thread = null,
             .pool = pool,
             .local_queue = WorkQueue.init(allocator),
-            .is_running = atomic.Atomic(bool).init(false),
-            .tasks_executed = atomic.Atomic(u64).init(0),
+            .is_running = std.atomic.Value(bool).init(false),
+        .tasks_executed = std.atomic.Value(u64).init(0),
         };
     }
     
@@ -211,12 +212,12 @@ const WorkerThread = struct {
     }
     
     pub fn start(self: *WorkerThread) !void {
-        self.is_running.store(true, .Release);
+        self.is_running.store(true, .release);
         self.thread = try Thread.spawn(.{}, workerLoop, .{self});
     }
     
     pub fn stop(self: *WorkerThread) void {
-        self.is_running.store(false, .Release);
+        self.is_running.store(false, .release);
         self.local_queue.condition.signal();
     }
     
@@ -228,7 +229,7 @@ const WorkerThread = struct {
     }
     
     fn workerLoop(self: *WorkerThread) void {
-        while (self.is_running.load(.Acquire)) {
+        while (self.is_running.load(.acquire)) {
             // 1. 尝试从本地队列获取任务
             var task = self.local_queue.pop();
             
@@ -251,8 +252,8 @@ const WorkerThread = struct {
             // 5. 执行任务
             if (task) |t| {
                 t.execute();
-                _ = self.tasks_executed.fetchAdd(1, .Release);
-                self.pool.stats.tasks_completed.fetchAdd(1, .Release);
+                _ = self.tasks_executed.fetchAdd(1, .release);
+                _ = self.pool.stats.tasks_completed.fetchAdd(1, .release);
             }
         }
     }
@@ -262,7 +263,7 @@ const WorkerThread = struct {
         for (self.pool.workers.items) |*worker| {
             if (worker.id != self.id) {
                 if (worker.local_queue.pop()) |task| {
-                    self.pool.stats.tasks_stolen.fetchAdd(1, .Release);
+                    _ = self.pool.stats.tasks_stolen.fetchAdd(1, .release);
                     return task;
                 }
             }
@@ -317,46 +318,46 @@ pub const ThreadPoolConfig = struct {
 
 // 线程池统计信息
 pub const ThreadPoolStats = struct {
-    tasks_submitted: atomic.Atomic(u64),
-    tasks_completed: atomic.Atomic(u64),
-    tasks_failed: atomic.Atomic(u64),
-    tasks_cancelled: atomic.Atomic(u64),
-    tasks_stolen: atomic.Atomic(u64),
-    active_threads: atomic.Atomic(u32),
-    peak_threads: atomic.Atomic(u32),
-    total_execution_time_ms: atomic.Atomic(u64),
+    tasks_submitted: std.atomic.Value(u64),
+    tasks_completed: std.atomic.Value(u64),
+    tasks_failed: std.atomic.Value(u64),
+    tasks_cancelled: std.atomic.Value(u64),
+    tasks_stolen: std.atomic.Value(u64),
+    active_threads: std.atomic.Value(u32),
+    peak_threads: std.atomic.Value(u32),
+    total_execution_time_ms: std.atomic.Value(u64),
     
     pub fn init() ThreadPoolStats {
         return ThreadPoolStats{
-            .tasks_submitted = atomic.Atomic(u64).init(0),
-            .tasks_completed = atomic.Atomic(u64).init(0),
-            .tasks_failed = atomic.Atomic(u64).init(0),
-            .tasks_cancelled = atomic.Atomic(u64).init(0),
-            .tasks_stolen = atomic.Atomic(u64).init(0),
-            .active_threads = atomic.Atomic(u32).init(0),
-            .peak_threads = atomic.Atomic(u32).init(0),
-            .total_execution_time_ms = atomic.Atomic(u64).init(0),
+            .tasks_submitted = std.atomic.Value(u64).init(0),
+        .tasks_completed = std.atomic.Value(u64).init(0),
+        .tasks_failed = std.atomic.Value(u64).init(0),
+        .tasks_cancelled = std.atomic.Value(u64).init(0),
+        .tasks_stolen = std.atomic.Value(u64).init(0),
+        .active_threads = std.atomic.Value(u32).init(0),
+        .peak_threads = std.atomic.Value(u32).init(0),
+        .total_execution_time_ms = std.atomic.Value(u64).init(0),
         };
     }
     
     pub fn getCompletionRate(self: *const ThreadPoolStats) f64 {
-        const submitted = self.tasks_submitted.load(.Acquire);
+        const submitted = self.tasks_submitted.load(.acquire);
         if (submitted == 0) return 0.0;
-        const completed = self.tasks_completed.load(.Acquire);
+        const completed = self.tasks_completed.load(.acquire);
         return @as(f64, @floatFromInt(completed)) / @as(f64, @floatFromInt(submitted));
     }
     
     pub fn getFailureRate(self: *const ThreadPoolStats) f64 {
-        const completed = self.tasks_completed.load(.Acquire);
+        const completed = self.tasks_completed.load(.acquire);
         if (completed == 0) return 0.0;
-        const failed = self.tasks_failed.load(.Acquire);
+        const failed = self.tasks_failed.load(.acquire);
         return @as(f64, @floatFromInt(failed)) / @as(f64, @floatFromInt(completed));
     }
     
     pub fn getAverageExecutionTime(self: *const ThreadPoolStats) f64 {
-        const completed = self.tasks_completed.load(.Acquire);
+        const completed = self.tasks_completed.load(.acquire);
         if (completed == 0) return 0.0;
-        const total_time = self.total_execution_time_ms.load(.Acquire);
+        const total_time = self.total_execution_time_ms.load(.acquire);
         return @as(f64, @floatFromInt(total_time)) / @as(f64, @floatFromInt(completed));
     }
 };
@@ -370,8 +371,8 @@ pub const ThreadPool = struct {
     workers: std.ArrayList(WorkerThread),
     global_queue: WorkQueue,
     stats: ThreadPoolStats,
-    next_task_id: atomic.Atomic(u64),
-    is_shutdown: atomic.Atomic(bool),
+    next_task_id: std.atomic.Value(u64),
+    is_shutdown: std.atomic.Value(bool),
     shutdown_mutex: Mutex,
     shutdown_condition: Condition,
     
@@ -389,8 +390,8 @@ pub const ThreadPool = struct {
             .workers = std.ArrayList(WorkerThread).init(allocator),
             .global_queue = WorkQueue.init(allocator),
             .stats = ThreadPoolStats.init(),
-            .next_task_id = atomic.Atomic(u64).init(1),
-            .is_shutdown = atomic.Atomic(bool).init(false),
+            .next_task_id = std.atomic.Value(u64).init(1),
+        .is_shutdown = std.atomic.Value(bool).init(false),
             .shutdown_mutex = Mutex{},
             .shutdown_condition = Condition{},
         };
@@ -403,15 +404,15 @@ pub const ThreadPool = struct {
             try self.workers.append(worker);
         }
         
-        self.stats.active_threads.store(config.core_threads, .Release);
-        self.stats.peak_threads.store(config.core_threads, .Release);
+        self.stats.active_threads.store(config.core_threads, .release);
+        self.stats.peak_threads.store(config.core_threads, .release);
         
         return self;
     }
     
     pub fn deinit(self: *Self) void {
         self.shutdown();
-        self.awaitTermination(null);
+        _ = self.awaitTermination(null);
         
         for (self.workers.items) |*worker| {
             worker.deinit();
@@ -423,11 +424,11 @@ pub const ThreadPool = struct {
     
     // 提交任务
     pub fn submit(self: *Self, priority: TaskPriority, execute_fn: *const fn (ctx: *anyopaque) anyerror!void, context: *anyopaque) !*Task {
-        if (self.is_shutdown.load(.Acquire)) {
+        if (self.is_shutdown.load(.acquire)) {
             return ThreadPoolError.PoolShutdown;
         }
         
-        const task_id = self.next_task_id.fetchAdd(1, .Release);
+        const task_id = self.next_task_id.fetchAdd(1, .release);
         const task = try self.allocator.create(Task);
         task.* = Task.init(task_id, priority, execute_fn, context);
         
@@ -457,7 +458,7 @@ pub const ThreadPool = struct {
             try self.global_queue.push(task);
         }
         
-        _ = self.stats.tasks_submitted.fetchAdd(1, .Release);
+        _ = self.stats.tasks_submitted.fetchAdd(1, .release);
         return task;
     }
     
@@ -473,7 +474,7 @@ pub const ThreadPool = struct {
     
     // 获取活跃线程数
     pub fn getActiveThreadCount(self: *Self) u32 {
-        return self.stats.active_threads.load(.Acquire);
+        return self.stats.active_threads.load(.acquire);
     }
     
     // 获取队列大小
@@ -497,7 +498,7 @@ pub const ThreadPool = struct {
     
     // 关闭线程池
     pub fn shutdown(self: *Self) void {
-        self.is_shutdown.store(true, .Release);
+        self.is_shutdown.store(true, .release);
         
         // 停止所有工作线程
         for (self.workers.items) |*worker| {
@@ -528,7 +529,7 @@ pub const ThreadPool = struct {
     
     // 检查是否已关闭
     pub fn isShutdown(self: *Self) bool {
-        return self.is_shutdown.load(.Acquire);
+        return self.is_shutdown.load(.acquire);
     }
     
     // 检查是否已终止
@@ -536,7 +537,7 @@ pub const ThreadPool = struct {
         if (!self.isShutdown()) return false;
         
         for (self.workers.items) |*worker| {
-            if (worker.is_running.load(.Acquire)) {
+            if (worker.is_running.load(.acquire)) {
                 return false;
             }
         }
@@ -633,8 +634,8 @@ test "ThreadPool multiple tasks" {
     }
     
     const stats = pool.getStats();
-    try testing.expect(stats.tasks_submitted.load(.Acquire) == 10);
-    try testing.expect(stats.tasks_completed.load(.Acquire) == 10);
+    try testing.expect(stats.tasks_submitted.load(.acquire) == 10);
+    try testing.expect(stats.tasks_completed.load(.acquire) == 10);
 }
 
 test "ThreadPool shutdown" {
@@ -686,10 +687,10 @@ test "Task priority" {
 test "ThreadPoolStats" {
     var stats = ThreadPoolStats.init();
     
-    _ = stats.tasks_submitted.fetchAdd(100, .Release);
-    _ = stats.tasks_completed.fetchAdd(90, .Release);
-    _ = stats.tasks_failed.fetchAdd(5, .Release);
-    _ = stats.total_execution_time_ms.fetchAdd(1000, .Release);
+    _ = stats.tasks_submitted.fetchAdd(100, .release);
+    _ = stats.tasks_completed.fetchAdd(90, .release);
+    _ = stats.tasks_failed.fetchAdd(5, .release);
+    _ = stats.total_execution_time_ms.fetchAdd(1000, .release);
     
     try testing.expect(stats.getCompletionRate() == 0.9);
     try testing.expect(stats.getFailureRate() == 5.0 / 90.0);

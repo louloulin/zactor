@@ -23,8 +23,8 @@ pub const SystemMessage = enum {
     start,
     stop,
     restart,
-    suspend,
-    resume,
+    suspend_actor,
+    resume_actor,
     shutdown,
     ping,
     pong,
@@ -45,7 +45,7 @@ pub const SystemMessage = enum {
         return switch (self) {
             .kill, .shutdown, .exit => .critical,
             .stop, .restart, .supervisor_directive => .high,
-            .start, .suspend, .resume, .error_notification => .normal,
+            .start, .suspend_actor, .resume_actor, .error_notification => .normal,
             .ping, .pong, .heartbeat, .status_request, .status_response => .low,
             else => .normal,
         };
@@ -460,7 +460,7 @@ fn generateMessageId() u64 {
 
 // 测试
 test "Message basic operations" {
-    const allocator = testing.allocator;
+    _ = testing.allocator;
     
     // 测试系统消息
     const sys_msg = Message.createSystem(.stop, null);

@@ -30,7 +30,7 @@ pub const ActorContext = struct {
         };
     }
     
-    pub fn self(self: *Self) *Actor {
+    pub fn getActor(self: *Self) *Actor {
         return self.actor;
     }
     
@@ -81,8 +81,8 @@ pub const ActorBehavior = struct {
     
     pub const SupervisionStrategy = enum {
         stop,
-        restart,
-        resume,
+        restart_actor,
+        resume_actor,
         escalate,
     };
     
@@ -240,23 +240,23 @@ pub const Actor = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         
-        const current_status = self.status.load(.Acquire);
+        const current_status = self.status.load(.acquire);
         if (current_status != .created and current_status != .stopped) {
             return ActorError.InvalidActorState;
         }
         
-        self.status.store(.starting, .Release);
+        self.status.store(.starting, .release);
         self.started_at = std.time.milliTimestamp();
         
         // 调用preStart钩子
         if (self.behavior) |behavior| {
             behavior.preStart(&self.context) catch |err| {
-                self.status.store(.failed, .Release);
+                self.status.store(.failed, .release);
                 return err;
             };
         }
         
-        self.status.store(.running, .Release);
+        self.status.store(.running, .release);
         self.condition.broadcast();
     }
     
@@ -264,19 +264,19 @@ pub const Actor = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         
-        const current_status = self.status.load(.Acquire);
+        const current_status = self.status.load(.acquire);
         if (current_status == .stopped or current_status == .stopping) {
             return;
         }
         
-        self.status.store(.stopping, .Release);
+        self.status.store(.stopping, .release);
         
         // 调用postStop钩子
         if (self.behavior) |behavior| {
             behavior.postStop(&self.context) catch {};
         }
         
-        self.status.store(.stopped, .Release);
+        self.status.store(.stopped, .release);
         self.stopped_at = std.time.milliTimestamp();
         self.condition.broadcast();
     }
@@ -297,7 +297,7 @@ pub const Actor = struct {
             self.restart_count = 0;
         }
         
-        self.status.store(.restarting, .Release);
+        self.status.store(.restarting, .release);
         
         // 调用preRestart钩子
         if (self.behavior) |behavior| {
@@ -319,12 +319,12 @@ pub const Actor = struct {
         self.last_restart_time = now;
         self.stats.recordRestart();
         
-        self.status.store(.running, .Release);
+        self.status.store(.running, .release);
         self.condition.broadcast();
     }
     
     pub fn send(self: *Self, message: *Message, sender: ?*Actor) !void {
-        const current_status = self.status.load(.Acquire);
+        const current_status = self.status.load(.acquire);
         if (current_status != .running and current_status != .starting) {
             return ActorError.ActorTerminated;
         }
@@ -365,8 +365,8 @@ pub const Actor = struct {
                 const strategy = behavior.supervisorStrategy();
                 switch (strategy) {
                     .stop => self.stop(),
-                    .restart => try self.restart(err),
-                    .resume => {}, // 继续处理
+                    .restart_actor => try self.restart(err),
+                    .resume_actor => {}, // 继续处理
                     .escalate => return err,
                 }
                 return;
@@ -383,7 +383,7 @@ pub const Actor = struct {
     }
     
     pub fn getStatus(self: *const Self) ActorStatus {
-        return self.status.load(.Acquire);
+        return self.status.load(.acquire);
     }
     
     pub fn isRunning(self: *const Self) bool {
@@ -412,7 +412,7 @@ pub const Actor = struct {
         
         const deadline = std.time.milliTimestamp() + @as(i64, @intCast(timeout_ms));
         
-        while (self.status.load(.Acquire) != target_status) {
+        while (self.status.load(.acquire) != target_status) {
             const now = std.time.milliTimestamp();
             if (now >= deadline) {
                 return false; // 超时
@@ -467,9 +467,9 @@ pub const Actor = struct {
 };
 
 // 测试
-test "Actor lifecycle" {
+test "Actor creation" {
     const testing = std.testing;
-    const allocator = testing.allocator;
+    _ = testing;
     
     // 这里需要实际的Mailbox实现来进行测试
     // 暂时跳过，等待Mailbox模块完成
@@ -479,12 +479,12 @@ test "Actor behavior" {
     const testing = std.testing;
     
     var default_behavior = DefaultBehavior.init();
-    try testing.expect(default_behavior.behavior.supervisorStrategy() == .restart);
+    try testing.expect(default_behavior.behavior.supervisorStrategy() == .restart_actor);
 }
 
 test "ActorContext" {
     const testing = std.testing;
-    const allocator = testing.allocator;
+    _ = testing;
     
     // 创建一个模拟的Actor用于测试
     // 暂时跳过，等待完整的Actor系统实现

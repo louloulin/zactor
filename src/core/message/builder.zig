@@ -182,9 +182,9 @@ pub const MessageBuilder = struct {
         const final_type = self.message_type orelse MessageType{ .user = UserMessage{ .data = self.payload.? } };
         
         // 创建消息
-        const message = try Message.initWithMetadata(self.allocator, final_type, metadata);
+        const built_message = try Message.initWithMetadata(self.allocator, final_type, metadata);
         
-        return message;
+        return built_message;
     }
     
     // 辅助方法
@@ -292,8 +292,8 @@ pub const BatchMessageBuilder = struct {
         _ = try builder.withUserMessage(data);
         
         // 构建并添加消息
-        const message = try builder.build();
-        try self.messages.append(message);
+        const built_message = try builder.build();
+        try self.messages.append(built_message);
         
         return self;
     }
@@ -315,8 +315,8 @@ pub const BatchMessageBuilder = struct {
         try builder_fn(&builder);
         
         // 构建并添加消息
-        const message = try builder.build();
-        try self.messages.append(message);
+        const built_message = try builder.build();
+        try self.messages.append(built_message);
         
         return self;
     }

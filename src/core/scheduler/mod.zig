@@ -4,15 +4,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
-const Atomic = std.atomic.Atomic;
+const AtomicValue = std.atomic.Value;
 
 // 重新导出调度器组件
-pub const Scheduler = @import("scheduler.zig").Scheduler;
-pub const WorkStealingScheduler = @import("work_stealing.zig").WorkStealingScheduler;
-pub const ThreadPoolScheduler = @import("thread_pool.zig").ThreadPoolScheduler;
-pub const FiberScheduler = @import("fiber.zig").FiberScheduler;
-pub const Dispatcher = @import("dispatcher.zig").Dispatcher;
-pub const TaskQueue = @import("task_queue.zig").TaskQueue;
+// TODO: 待实现的调度器模块
+// pub const Scheduler = @import("scheduler.zig").Scheduler;
+// pub const WorkStealingScheduler = @import("work_stealing.zig").WorkStealingScheduler;
+// pub const ThreadPoolScheduler = @import("thread_pool.zig").ThreadPoolScheduler;
+// pub const FiberScheduler = @import("fiber.zig").FiberScheduler;
+// pub const Dispatcher = @import("dispatcher.zig").Dispatcher;
+// pub const TaskQueue = @import("task_queue.zig").TaskQueue;
 
 // 调度器相关错误
 pub const SchedulerError = error{
@@ -182,18 +183,18 @@ pub fn SimpleTask(comptime Context: type) type {
         }
         
         fn execute(task: *Task) !void {
-            const self = @fieldParentPtr(Self, "task", task);
+            const self = @as(*Self, @fieldParentPtr("task", task));
             try self.execute_fn(&self.context);
         }
         
         fn deinitTask(task: *Task) void {
-            const self = @fieldParentPtr(Self, "task", task);
+            const self = @as(*Self, @fieldParentPtr("task", task));
             self.allocator.free(self.name);
             self.allocator.destroy(self);
         }
         
         fn getName(task: *Task) []const u8 {
-            const self = @fieldParentPtr(Self, "task", task);
+            const self = @as(*Self, @fieldParentPtr("task", task));
             return self.name;
         }
     };
@@ -201,77 +202,77 @@ pub fn SimpleTask(comptime Context: type) type {
 
 // 调度器统计信息
 pub const SchedulerStats = struct {
-    tasks_submitted: Atomic(u64) = Atomic(u64).init(0),
-    tasks_completed: Atomic(u64) = Atomic(u64).init(0),
-    tasks_failed: Atomic(u64) = Atomic(u64).init(0),
-    tasks_stolen: Atomic(u64) = Atomic(u64).init(0),
-    total_execution_time_ns: Atomic(u64) = Atomic(u64).init(0),
-    total_wait_time_ns: Atomic(u64) = Atomic(u64).init(0),
-    active_workers: Atomic(u32) = Atomic(u32).init(0),
-    idle_workers: Atomic(u32) = Atomic(u32).init(0),
+    tasks_submitted: AtomicValue(u64) = AtomicValue(u64).init(0),
+    tasks_completed: AtomicValue(u64) = AtomicValue(u64).init(0),
+    tasks_failed: AtomicValue(u64) = AtomicValue(u64).init(0),
+    tasks_stolen: AtomicValue(u64) = AtomicValue(u64).init(0),
+    total_execution_time_ns: AtomicValue(u64) = AtomicValue(u64).init(0),
+    total_wait_time_ns: AtomicValue(u64) = AtomicValue(u64).init(0),
+    active_workers: AtomicValue(u32) = AtomicValue(u32).init(0),
+    idle_workers: AtomicValue(u32) = AtomicValue(u32).init(0),
     
     pub fn recordTaskSubmitted(self: *SchedulerStats) void {
-        _ = self.tasks_submitted.fetchAdd(1, .Monotonic);
+        _ = self.tasks_submitted.fetchAdd(1, .monotonic);
     }
     
     pub fn recordTaskCompleted(self: *SchedulerStats, execution_time_ns: u64, wait_time_ns: u64) void {
-        _ = self.tasks_completed.fetchAdd(1, .Monotonic);
-        _ = self.total_execution_time_ns.fetchAdd(execution_time_ns, .Monotonic);
-        _ = self.total_wait_time_ns.fetchAdd(wait_time_ns, .Monotonic);
+        _ = self.tasks_completed.fetchAdd(1, .monotonic);
+        _ = self.total_execution_time_ns.fetchAdd(execution_time_ns, .monotonic);
+        _ = self.total_wait_time_ns.fetchAdd(wait_time_ns, .monotonic);
     }
     
     pub fn recordTaskFailed(self: *SchedulerStats) void {
-        _ = self.tasks_failed.fetchAdd(1, .Monotonic);
+        _ = self.tasks_failed.fetchAdd(1, .monotonic);
     }
     
     pub fn recordTaskStolen(self: *SchedulerStats) void {
-        _ = self.tasks_stolen.fetchAdd(1, .Monotonic);
+        _ = self.tasks_stolen.fetchAdd(1, .monotonic);
     }
     
     pub fn recordWorkerActive(self: *SchedulerStats) void {
-        _ = self.active_workers.fetchAdd(1, .Monotonic);
-        _ = self.idle_workers.fetchSub(1, .Monotonic);
+        _ = self.active_workers.fetchAdd(1, .monotonic);
+        _ = self.idle_workers.fetchSub(1, .monotonic);
     }
     
     pub fn recordWorkerIdle(self: *SchedulerStats) void {
-        _ = self.idle_workers.fetchAdd(1, .Monotonic);
-        _ = self.active_workers.fetchSub(1, .Monotonic);
+        _ = self.idle_workers.fetchAdd(1, .monotonic);
+        _ = self.active_workers.fetchSub(1, .monotonic);
     }
     
     pub fn getThroughput(self: *const SchedulerStats, duration_ns: u64) f64 {
-        const completed = self.tasks_completed.load(.Monotonic);
+        const completed = self.tasks_completed.load(.monotonic);
         const duration_s = @as(f64, @floatFromInt(duration_ns)) / 1_000_000_000.0;
         return @as(f64, @floatFromInt(completed)) / duration_s;
     }
     
     pub fn getAverageExecutionTime(self: *const SchedulerStats) f64 {
-        const completed = self.tasks_completed.load(.Monotonic);
+        const completed = self.tasks_completed.load(.monotonic);
         if (completed == 0) return 0.0;
         
-        const total_time = self.total_execution_time_ns.load(.Monotonic);
+        const total_time = self.total_execution_time_ns.load(.monotonic);
         return @as(f64, @floatFromInt(total_time)) / @as(f64, @floatFromInt(completed));
     }
     
     pub fn getAverageWaitTime(self: *const SchedulerStats) f64 {
-        const completed = self.tasks_completed.load(.Monotonic);
+        const completed = self.tasks_completed.load(.monotonic);
         if (completed == 0) return 0.0;
         
-        const total_time = self.total_wait_time_ns.load(.Monotonic);
+        const total_time = self.total_wait_time_ns.load(.monotonic);
         return @as(f64, @floatFromInt(total_time)) / @as(f64, @floatFromInt(completed));
     }
     
     pub fn getUtilization(self: *const SchedulerStats, total_workers: u32) f64 {
-        const active = self.active_workers.load(.Monotonic);
+        const active = self.active_workers.load(.monotonic);
         return @as(f64, @floatFromInt(active)) / @as(f64, @floatFromInt(total_workers));
     }
     
     pub fn reset(self: *SchedulerStats) void {
-        self.tasks_submitted.store(0, .Monotonic);
-        self.tasks_completed.store(0, .Monotonic);
-        self.tasks_failed.store(0, .Monotonic);
-        self.tasks_stolen.store(0, .Monotonic);
-        self.total_execution_time_ns.store(0, .Monotonic);
-        self.total_wait_time_ns.store(0, .Monotonic);
+        self.tasks_submitted.store(0, .monotonic);
+        self.tasks_completed.store(0, .monotonic);
+        self.tasks_failed.store(0, .monotonic);
+        self.tasks_stolen.store(0, .monotonic);
+        self.total_execution_time_ns.store(0, .monotonic);
+        self.total_wait_time_ns.store(0, .monotonic);
     }
 };
 
@@ -288,44 +289,44 @@ pub const WorkerState = enum {
 pub const WorkerInfo = struct {
     id: u32,
     thread_id: Thread.Id,
-    state: Atomic(WorkerState),
-    tasks_processed: Atomic(u64),
-    tasks_stolen: Atomic(u64),
-    last_activity: Atomic(i64),
+    state: AtomicValue(WorkerState),
+    tasks_processed: AtomicValue(u64),
+    tasks_stolen: AtomicValue(u64),
+    last_activity: AtomicValue(i64),
     
     pub fn init(id: u32, thread_id: Thread.Id) WorkerInfo {
         return WorkerInfo{
             .id = id,
             .thread_id = thread_id,
-            .state = Atomic(WorkerState).init(.idle),
-            .tasks_processed = Atomic(u64).init(0),
-            .tasks_stolen = Atomic(u64).init(0),
-            .last_activity = Atomic(i64).init(std.time.milliTimestamp()),
+                .state = AtomicValue(WorkerState).init(.idle),
+            .tasks_processed = AtomicValue(u64).init(0),
+            .tasks_stolen = AtomicValue(u64).init(0),
+            .last_activity = AtomicValue(i64).init(std.time.milliTimestamp()),
         };
     }
     
     pub fn setState(self: *WorkerInfo, state: WorkerState) void {
-        self.state.store(state, .Monotonic);
-        self.last_activity.store(std.time.milliTimestamp(), .Monotonic);
+        self.state.store(state, .monotonic);
+        self.last_activity.store(std.time.milliTimestamp(), .monotonic);
     }
     
     pub fn getState(self: *const WorkerInfo) WorkerState {
-        return self.state.load(.Monotonic);
+        return self.state.load(.monotonic);
     }
     
     pub fn recordTaskProcessed(self: *WorkerInfo) void {
-        _ = self.tasks_processed.fetchAdd(1, .Monotonic);
-        self.last_activity.store(std.time.milliTimestamp(), .Monotonic);
+        _ = self.tasks_processed.fetchAdd(1, .monotonic);
+        self.last_activity.store(std.time.milliTimestamp(), .monotonic);
     }
     
     pub fn recordTaskStolen(self: *WorkerInfo) void {
-        _ = self.tasks_stolen.fetchAdd(1, .Monotonic);
-        self.last_activity.store(std.time.milliTimestamp(), .Monotonic);
+        _ = self.tasks_stolen.fetchAdd(1, .monotonic);
+        self.last_activity.store(std.time.milliTimestamp(), .monotonic);
     }
     
     pub fn getIdleTime(self: *const WorkerInfo) i64 {
         const now = std.time.milliTimestamp();
-        const last = self.last_activity.load(.Monotonic);
+        const last = self.last_activity.load(.monotonic);
         return now - last;
     }
 };
@@ -384,16 +385,15 @@ pub const SchedulerFactory = struct {
     }
     
     pub fn createScheduler(self: *SchedulerFactory, config: SchedulerConfig) !*SchedulerInterface {
+        _ = self;
         switch (config.strategy) {
             .work_stealing => {
-                const scheduler = try self.allocator.create(WorkStealingScheduler);
-                scheduler.* = try WorkStealingScheduler.init(self.allocator, config);
-                return &scheduler.interface;
+                // TODO: WorkStealingScheduler未实现
+                return error.NotImplemented;
             },
             .round_robin, .priority_based, .locality_aware, .adaptive, .fair_share => {
-                const scheduler = try self.allocator.create(ThreadPoolScheduler);
-                scheduler.* = try ThreadPoolScheduler.init(self.allocator, config);
-                return &scheduler.interface;
+                // TODO: ThreadPoolScheduler未实现
+                return error.NotImplemented;
             },
         }
     }
@@ -437,12 +437,12 @@ test "SchedulerStats operations" {
     var stats = SchedulerStats{};
     
     stats.recordTaskSubmitted();
-    try testing.expect(stats.tasks_submitted.load(.Monotonic) == 1);
+    try testing.expect(stats.tasks_submitted.load(.monotonic) == 1);
     
     stats.recordTaskCompleted(1000, 500);
-    try testing.expect(stats.tasks_completed.load(.Monotonic) == 1);
-    try testing.expect(stats.total_execution_time_ns.load(.Monotonic) == 1000);
-    try testing.expect(stats.total_wait_time_ns.load(.Monotonic) == 500);
+    try testing.expect(stats.tasks_completed.load(.monotonic) == 1);
+    try testing.expect(stats.total_execution_time_ns.load(.monotonic) == 1000);
+    try testing.expect(stats.total_wait_time_ns.load(.monotonic) == 500);
     
     const avg_exec = stats.getAverageExecutionTime();
     try testing.expect(avg_exec == 1000.0);

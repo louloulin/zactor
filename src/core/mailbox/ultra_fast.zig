@@ -139,9 +139,9 @@ pub const UltraFastMailbox = struct {
         while (attempts < NUM_RINGS) : (attempts += 1) {
             const ring = self.selectRing();
             
-            const current_tail = ring.tail.load(.Acquire);
+            const current_tail = ring.tail.load(.acquire);
             const next_tail = (current_tail + 1) & ring.mask;
-            const current_head = ring.head.load(.Acquire);
+            const current_head = ring.head.load(.acquire);
             
             // 检查是否有空间
             if (next_tail != current_head) {
@@ -179,8 +179,8 @@ pub const UltraFastMailbox = struct {
     pub fn receiveMessage(self: *Self) ?Message {
         // 轮询所有环形缓冲区
         for (&self.rings) |*ring| {
-            const current_head = ring.head.load(.Acquire);
-            const current_tail = ring.tail.load(.Acquire);
+            const current_head = ring.head.load(.acquire);
+            const current_tail = ring.tail.load(.acquire);
             
             // 检查是否有消息
             if (current_head != current_tail) {
@@ -206,8 +206,8 @@ pub const UltraFastMailbox = struct {
     
     pub fn isEmptyImpl(self: *const Self) bool {
         for (&self.rings) |*ring| {
-            const current_head = ring.head.load(.Acquire);
-            const current_tail = ring.tail.load(.Acquire);
+            const current_head = ring.head.load(.acquire);
+            const current_tail = ring.tail.load(.acquire);
             if (current_head != current_tail) {
                 return false;
             }
@@ -218,8 +218,8 @@ pub const UltraFastMailbox = struct {
     pub fn sizeImpl(self: *const Self) u32 {
         var total_size: u32 = 0;
         for (&self.rings) |*ring| {
-            const current_head = ring.head.load(.Acquire);
-            const current_tail = ring.tail.load(.Acquire);
+            const current_head = ring.head.load(.acquire);
+            const current_tail = ring.tail.load(.acquire);
             total_size += (current_tail - current_head) & ring.mask;
         }
         return total_size;
@@ -229,8 +229,8 @@ pub const UltraFastMailbox = struct {
         // 清理所有环形缓冲区中的剩余消息
         for (&self.rings) |*ring| {
             while (true) {
-                const current_head = ring.head.load(.Acquire);
-                const current_tail = ring.tail.load(.Acquire);
+                const current_head = ring.head.load(.acquire);
+                const current_tail = ring.tail.load(.acquire);
                 
                 if (current_head == current_tail) break;
                 
@@ -238,7 +238,7 @@ pub const UltraFastMailbox = struct {
                 message.deinit(self.allocator);
                 
                 const next_head = (current_head + 1) & ring.mask;
-                ring.head.store(next_head, .Release);
+                ring.head.store(next_head, .release);
             }
             
             // 释放环形缓冲区
@@ -268,14 +268,14 @@ pub const UltraFastMailbox = struct {
             for (&self.rings) |*ring| {
                 if (remaining.len == 0) break;
                 
-                const current_tail = ring.tail.load(.Acquire);
-                const current_head = ring.head.load(.Acquire);
+                const current_tail = ring.tail.load(.acquire);
+                const current_head = ring.head.load(.acquire);
                 
                 // 计算可用空间
                 const available_space = if (current_head > current_tail) {
-                    current_head - current_tail - 1
+                    current_head - current_tail - 1;
                 } else {
-                    ring.capacity - (current_tail - current_head) - 1
+                    ring.capacity - (current_tail - current_head) - 1;
                 };
                 
                 if (available_space == 0) continue;
@@ -311,7 +311,7 @@ pub const UltraFastMailbox = struct {
                 
                 // 更新tail指针
                 const new_tail = (current_tail + batch_size) & ring.mask;
-                ring.tail.store(new_tail, .Release);
+                ring.tail.store(new_tail, .release);
                 
                 total_sent += @intCast(batch_size);
                 remaining = remaining[batch_size..];
@@ -357,8 +357,8 @@ pub const UltraFastMailbox = struct {
             for (&self.rings) |*ring| {
                 if (remaining.len == 0) break;
                 
-                const current_head = ring.head.load(.Acquire);
-                const current_tail = ring.tail.load(.Acquire);
+                const current_head = ring.head.load(.acquire);
+                const current_tail = ring.tail.load(.acquire);
                 
                 // 计算可用消息数量
                 const available_messages = (current_tail - current_head) & ring.mask;
@@ -395,7 +395,7 @@ pub const UltraFastMailbox = struct {
                 
                 // 更新head指针
                 const new_head = (current_head + batch_size) & ring.mask;
-                ring.head.store(new_head, .Release);
+                ring.head.store(new_head, .release);
                 
                 total_received += @intCast(batch_size);
                 remaining = remaining[batch_size..];
@@ -418,7 +418,7 @@ pub const UltraFastMailbox = struct {
     
     // 预分配消息池支持
     pub fn allocateMessage(self: *Self) ?*Message {
-        const current_head = self.pool_head.load(.Acquire);
+        const current_head = self.pool_head.load(.acquire);
         if (current_head >= self.pool_capacity) {
             return null;
         }
@@ -440,8 +440,8 @@ pub const UltraFastMailbox = struct {
     // 高级性能功能
     pub fn prefetchNextMessage(self: *const Self) void {
         for (&self.rings) |*ring| {
-            const current_head = ring.head.load(.Acquire);
-            const current_tail = ring.tail.load(.Acquire);
+            const current_head = ring.head.load(.acquire);
+            const current_tail = ring.tail.load(.acquire);
             
             if (current_head != current_tail) {
                 // 预取下一个消息到缓存

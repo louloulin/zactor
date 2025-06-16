@@ -195,7 +195,7 @@ pub const JsonMessageSerializer = struct {
     }
     
     fn serialize(serializer: *MessageSerializer, message: *const Message, buffer: []u8) !usize {
-        const self = @fieldParentPtr(Self, "serializer", serializer);
+        const self = @as(*Self, @fieldParentPtr("serializer", serializer));
         
         // 创建JSON对象
         var json_obj = std.json.ObjectMap.init(self.serializer.allocator);
@@ -237,8 +237,8 @@ pub const JsonMessageSerializer = struct {
     }
     
     fn deserialize(serializer: *MessageSerializer, data: []const u8, allocator: Allocator) !*Message {
-        const self = @fieldParentPtr(Self, "serializer", serializer);
-        _ = self;
+        const self = @as(*Self, @fieldParentPtr("serializer", serializer));
+
         
         // 解析JSON
         var parser = std.json.Parser.init(allocator, false);
@@ -250,7 +250,7 @@ pub const JsonMessageSerializer = struct {
         const root = tree.root.object;
         
         // 提取基本字段
-        const id = @intCast(root.get("id").?.integer);
+        const id = @as(u64, @intCast(root.get("id").?.integer));
         const timestamp = root.get("timestamp").?.integer;
         
         const priority_str = root.get("priority").?.string;
@@ -294,7 +294,7 @@ pub const JsonMessageSerializer = struct {
     }
     
     fn deinitImpl(serializer: *MessageSerializer) void {
-        const self = @fieldParentPtr(Self, "serializer", serializer);
+        const self = @as(*Self, @fieldParentPtr("serializer", serializer));
         self.serializer.allocator.destroy(self);
     }
     
@@ -324,7 +324,6 @@ pub const JsonMessageSerializer = struct {
     }
     
     fn serializePayload(self: *Self, json_obj: *std.json.ObjectMap, payload: MessagePayload) !void {
-        _ = self;
         switch (payload) {
             .string => |str| {
                 try json_obj.put("payload_type", std.json.Value{ .string = "string" });
@@ -478,7 +477,7 @@ pub const BinaryMessageSerializer = struct {
     }
     
     fn deinitImpl(serializer: *MessageSerializer) void {
-        const self = @fieldParentPtr(Self, "serializer", serializer);
+        const self = @as(*Self, @fieldParentPtr("serializer", serializer));
         self.serializer.allocator.destroy(self);
     }
 };

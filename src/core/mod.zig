@@ -65,9 +65,9 @@ pub const SystemError = system.SystemError;
 pub const Mailbox = @import("mailbox/mod.zig").Mailbox;
 pub const MailboxConfig = @import("mailbox/mod.zig").MailboxConfig;
 pub const MailboxType = @import("mailbox/mod.zig").MailboxType;
-pub const Supervisor = @import("supervisor/mod.zig").Supervisor;
-pub const SupervisorStrategy = @import("supervisor/mod.zig").SupervisorStrategy;
-pub const SupervisorConfig = @import("supervisor/mod.zig").SupervisorConfig;
+// pub const Supervisor = @import("supervisor/mod.zig").Supervisor;
+// pub const SupervisorStrategy = @import("supervisor/mod.zig").SupervisorStrategy;
+// pub const SupervisorConfig = @import("supervisor/mod.zig").SupervisorConfig;
 pub const EventScheduler = scheduler.Scheduler; // 别名
 pub const ControlMessage = SystemMessage; // 别名
 

@@ -4,16 +4,16 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Thread = std.Thread;
-const Atomic = std.atomic.Atomic;
+const AtomicValue = std.atomic.Value;
 
 // 重新导出系统组件
-pub const ActorSystem = @import("actor_system.zig").ActorSystem;
-pub const SystemGuardian = @import("guardian.zig").SystemGuardian;
-pub const SystemRegistry = @import("registry.zig").SystemRegistry;
-pub const SystemMonitor = @import("monitor.zig").SystemMonitor;
-pub const SystemConfig = @import("config.zig").SystemConfig;
-pub const SystemMetrics = @import("metrics.zig").SystemMetrics;
-pub const SystemShutdown = @import("shutdown.zig").SystemShutdown;
+// pub const ActorSystem = @import("actor_system.zig").ActorSystem;
+// pub const SystemGuardian = @import("guardian.zig").SystemGuardian;
+// pub const SystemRegistry = @import("registry.zig").SystemRegistry;
+// pub const SystemMonitor = @import("monitor.zig").SystemMonitor;
+// pub const SystemConfig = @import("config.zig").SystemConfig;
+// pub const SystemMetrics = @import("metrics.zig").SystemMetrics;
+// pub const SystemShutdown = @import("shutdown.zig").SystemShutdown;
 
 // 系统相关错误
 pub const SystemError = error{
@@ -170,7 +170,7 @@ pub const SystemConfiguration = struct {
 pub const SystemComponent = struct {
     vtable: *const VTable,
     name: []const u8,
-    state: Atomic(ComponentState),
+    state: AtomicValue(ComponentState),
     
     pub const ComponentState = enum {
         created,
@@ -207,30 +207,30 @@ pub const SystemComponent = struct {
         return SystemComponent{
             .vtable = vtable,
             .name = name,
-            .state = Atomic(ComponentState).init(.created),
+            .state = AtomicValue(ComponentState).init(.created),
         };
     }
     
     pub fn start(self: *SystemComponent) !void {
-        self.state.store(.starting, .Monotonic);
+        self.state.store(.starting, .monotonic);
         self.vtable.start(self) catch |err| {
-            self.state.store(.failed, .Monotonic);
+            self.state.store(.failed, .monotonic);
             return err;
         };
-        self.state.store(.running, .Monotonic);
+        self.state.store(.running, .monotonic);
     }
     
     pub fn stop(self: *SystemComponent) !void {
-        self.state.store(.stopping, .Monotonic);
+        self.state.store(.stopping, .monotonic);
         self.vtable.stop(self) catch |err| {
-            self.state.store(.failed, .Monotonic);
+            self.state.store(.failed, .monotonic);
             return err;
         };
-        self.state.store(.stopped, .Monotonic);
+        self.state.store(.stopped, .monotonic);
     }
     
     pub fn getState(self: *const SystemComponent) ComponentState {
-        return self.state.load(.Monotonic);
+        return self.state.load(.monotonic);
     }
     
     pub fn isRunning(self: *const SystemComponent) bool {
@@ -333,136 +333,188 @@ pub const SystemEventListener = struct {
 // 系统统计信息
 pub const SystemStats = struct {
     start_time: i64,
-    uptime_ms: Atomic(u64),
+    uptime_ms: AtomicValue(u64),
     
     // Actor统计
-    total_actors: Atomic(u32),
-    active_actors: Atomic(u32),
-    failed_actors: Atomic(u32),
-    restarted_actors: Atomic(u32),
+    total_actors: AtomicValue(u32),
+    active_actors: AtomicValue(u32),
+    failed_actors: AtomicValue(u32),
+    restarted_actors: AtomicValue(u32),
     
     // 消息统计
-    messages_sent: Atomic(u64),
-    messages_processed: Atomic(u64),
-    messages_failed: Atomic(u64),
-    messages_dropped: Atomic(u64),
+    messages_sent: AtomicValue(u64),
+    messages_processed: AtomicValue(u64),
+    messages_failed: AtomicValue(u64),
+    messages_dropped: AtomicValue(u64),
     
-    // 系统资源
-    memory_usage_bytes: Atomic(u64),
-    cpu_usage_percent: Atomic(u32), // 存储为整数百分比 * 100
-    thread_count: Atomic(u32),
+    // 资源统计
+    memory_usage_bytes: AtomicValue(u64),
+    cpu_usage_percent: AtomicValue(u32), // 存储为整数百分比 * 100
+    thread_count: AtomicValue(u32),
     
-    // 性能指标
-    avg_message_processing_time_ns: Atomic(u64),
-    max_message_processing_time_ns: Atomic(u64),
-    throughput_messages_per_second: Atomic(u64),
+    // 性能统计
+    avg_message_processing_time_ns: AtomicValue(u64),
+    max_message_processing_time_ns: AtomicValue(u64),
+    throughput_messages_per_second: AtomicValue(u64),
     
     pub fn init() SystemStats {
         return SystemStats{
             .start_time = std.time.milliTimestamp(),
-            .uptime_ms = Atomic(u64).init(0),
-            .total_actors = Atomic(u32).init(0),
-            .active_actors = Atomic(u32).init(0),
-            .failed_actors = Atomic(u32).init(0),
-            .restarted_actors = Atomic(u32).init(0),
-            .messages_sent = Atomic(u64).init(0),
-            .messages_processed = Atomic(u64).init(0),
-            .messages_failed = Atomic(u64).init(0),
-            .messages_dropped = Atomic(u64).init(0),
-            .memory_usage_bytes = Atomic(u64).init(0),
-            .cpu_usage_percent = Atomic(u32).init(0),
-            .thread_count = Atomic(u32).init(0),
-            .avg_message_processing_time_ns = Atomic(u64).init(0),
-            .max_message_processing_time_ns = Atomic(u64).init(0),
-            .throughput_messages_per_second = Atomic(u64).init(0),
+            .uptime_ms = AtomicValue(u64).init(0),
+        .total_actors = AtomicValue(u32).init(0),
+        .active_actors = AtomicValue(u32).init(0),
+        .failed_actors = AtomicValue(u32).init(0),
+        .restarted_actors = AtomicValue(u32).init(0),
+        .messages_sent = AtomicValue(u64).init(0),
+        .messages_processed = AtomicValue(u64).init(0),
+        .messages_failed = AtomicValue(u64).init(0),
+        .messages_dropped = AtomicValue(u64).init(0),
+        .memory_usage_bytes = AtomicValue(u64).init(0),
+        .cpu_usage_percent = AtomicValue(u32).init(0),
+        .thread_count = AtomicValue(u32).init(0),
+        .avg_message_processing_time_ns = AtomicValue(u64).init(0),
+        .max_message_processing_time_ns = AtomicValue(u64).init(0),
+        .throughput_messages_per_second = AtomicValue(u64).init(0),
         };
     }
     
     pub fn updateUptime(self: *SystemStats) void {
         const now = std.time.milliTimestamp();
         const uptime = @as(u64, @intCast(now - self.start_time));
-        self.uptime_ms.store(uptime, .Monotonic);
+        self.uptime_ms.store(uptime, .monotonic);
     }
     
     pub fn recordActorCreated(self: *SystemStats) void {
-        _ = self.total_actors.fetchAdd(1, .Monotonic);
-        _ = self.active_actors.fetchAdd(1, .Monotonic);
+        _ = self.total_actors.fetchAdd(1, .monotonic);
+        _ = self.active_actors.fetchAdd(1, .monotonic);
     }
     
     pub fn recordActorTerminated(self: *SystemStats) void {
-        _ = self.active_actors.fetchSub(1, .Monotonic);
+        _ = self.active_actors.fetchSub(1, .monotonic);
     }
     
     pub fn recordActorFailed(self: *SystemStats) void {
-        _ = self.failed_actors.fetchAdd(1, .Monotonic);
+        _ = self.failed_actors.fetchAdd(1, .monotonic);
     }
     
     pub fn recordActorRestarted(self: *SystemStats) void {
-        _ = self.restarted_actors.fetchAdd(1, .Monotonic);
+        _ = self.restarted_actors.fetchAdd(1, .monotonic);
     }
     
     pub fn recordMessageSent(self: *SystemStats) void {
-        _ = self.messages_sent.fetchAdd(1, .Monotonic);
+        _ = self.messages_sent.fetchAdd(1, .monotonic);
     }
     
     pub fn recordMessageProcessed(self: *SystemStats, processing_time_ns: u64) void {
-        _ = self.messages_processed.fetchAdd(1, .Monotonic);
+        _ = self.messages_processed.fetchAdd(1, .monotonic);
         
         // 更新平均处理时间
-        const current_avg = self.avg_message_processing_time_ns.load(.Monotonic);
-        const new_avg = if (current_avg == 0) {
+        const current_avg = self.avg_message_processing_time_ns.load(.monotonic);
+        const new_avg = if (current_avg == 0)
             processing_time_ns
-        } else {
+        else
             // 简单移动平均
-            (current_avg * 9 + processing_time_ns) / 10
-        };
-        self.avg_message_processing_time_ns.store(new_avg, .Monotonic);
+            (current_avg * 9 + processing_time_ns) / 10;
+        self.avg_message_processing_time_ns.store(new_avg, .monotonic);
         
         // 更新最大处理时间
-        const current_max = self.max_message_processing_time_ns.load(.Monotonic);
+        const current_max = self.max_message_processing_time_ns.load(.monotonic);
         if (processing_time_ns > current_max) {
-            self.max_message_processing_time_ns.store(processing_time_ns, .Monotonic);
+            self.max_message_processing_time_ns.store(processing_time_ns, .monotonic);
         }
     }
     
     pub fn recordMessageFailed(self: *SystemStats) void {
-        _ = self.messages_failed.fetchAdd(1, .Monotonic);
+        _ = self.messages_failed.fetchAdd(1, .monotonic);
     }
     
     pub fn recordMessageDropped(self: *SystemStats) void {
-        _ = self.messages_dropped.fetchAdd(1, .Monotonic);
+        _ = self.messages_dropped.fetchAdd(1, .monotonic);
+    }
+    
+    pub fn updateMemoryUsage(self: *SystemStats, bytes: u64) void {
+        self.memory_usage_bytes.store(bytes, .monotonic);
+    }
+    
+    pub fn updateCpuUsage(self: *SystemStats, percent: f32) void {
+        const percent_int = @as(u32, @intFromFloat(percent * 100));
+        self.cpu_usage_percent.store(percent_int, .monotonic);
+    }
+    
+    pub fn updateThreadCount(self: *SystemStats, count: u32) void {
+        self.thread_count.store(count, .monotonic);
+    }
+    
+    pub fn updateThroughput(self: *SystemStats, messages_per_second: u64) void {
+        self.throughput_messages_per_second.store(messages_per_second, .monotonic);
     }
     
     pub fn updateResourceUsage(self: *SystemStats, memory_bytes: u64, cpu_percent: f32, threads: u32) void {
-        self.memory_usage_bytes.store(memory_bytes, .Monotonic);
-        self.cpu_usage_percent.store(@intFromFloat(cpu_percent * 100), .Monotonic);
-        self.thread_count.store(threads, .Monotonic);
+        self.memory_usage_bytes.store(memory_bytes, .monotonic);
+        self.cpu_usage_percent.store(@intFromFloat(cpu_percent * 100), .monotonic);
+        self.thread_count.store(threads, .monotonic);
     }
     
     pub fn calculateThroughput(self: *SystemStats, window_ms: u64) void {
-        const processed = self.messages_processed.load(.Monotonic);
+        const processed = self.messages_processed.load(.monotonic);
         const throughput = (processed * 1000) / window_ms;
-        self.throughput_messages_per_second.store(throughput, .Monotonic);
+        self.throughput_messages_per_second.store(throughput, .monotonic);
     }
     
     pub fn getSnapshot(self: *const SystemStats) SystemStatsSnapshot {
         return SystemStatsSnapshot{
-            .uptime_ms = self.uptime_ms.load(.Monotonic),
-            .total_actors = self.total_actors.load(.Monotonic),
-            .active_actors = self.active_actors.load(.Monotonic),
-            .failed_actors = self.failed_actors.load(.Monotonic),
-            .restarted_actors = self.restarted_actors.load(.Monotonic),
-            .messages_sent = self.messages_sent.load(.Monotonic),
-            .messages_processed = self.messages_processed.load(.Monotonic),
-            .messages_failed = self.messages_failed.load(.Monotonic),
-            .messages_dropped = self.messages_dropped.load(.Monotonic),
-            .memory_usage_bytes = self.memory_usage_bytes.load(.Monotonic),
-            .cpu_usage_percent = @as(f32, @floatFromInt(self.cpu_usage_percent.load(.Monotonic))) / 100.0,
-            .thread_count = self.thread_count.load(.Monotonic),
-            .avg_message_processing_time_ns = self.avg_message_processing_time_ns.load(.Monotonic),
-            .max_message_processing_time_ns = self.max_message_processing_time_ns.load(.Monotonic),
-            .throughput_messages_per_second = self.throughput_messages_per_second.load(.Monotonic),
+            .uptime_ms = self.uptime_ms.load(.monotonic),
+            .total_actors = self.total_actors.load(.monotonic),
+            .active_actors = self.active_actors.load(.monotonic),
+            .failed_actors = self.failed_actors.load(.monotonic),
+            .restarted_actors = self.restarted_actors.load(.monotonic),
+            .messages_sent = self.messages_sent.load(.monotonic),
+            .messages_processed = self.messages_processed.load(.monotonic),
+            .messages_failed = self.messages_failed.load(.monotonic),
+            .messages_dropped = self.messages_dropped.load(.monotonic),
+            .memory_usage_bytes = self.memory_usage_bytes.load(.monotonic),
+            .cpu_usage_percent = @as(f32, @floatFromInt(self.cpu_usage_percent.load(.monotonic))) / 100.0,
+            .thread_count = self.thread_count.load(.monotonic),
+            .avg_message_processing_time_ns = self.avg_message_processing_time_ns.load(.monotonic),
+            .max_message_processing_time_ns = self.max_message_processing_time_ns.load(.monotonic),
+            .throughput_messages_per_second = self.throughput_messages_per_second.load(.monotonic),
         };
+    }
+    
+    pub fn reset(self: *SystemStats) void {
+        self.start_time = std.time.milliTimestamp();
+        self.uptime_ms.store(0, .monotonic);
+        self.total_actors.store(0, .monotonic);
+        self.active_actors.store(0, .monotonic);
+        self.failed_actors.store(0, .monotonic);
+        self.restarted_actors.store(0, .monotonic);
+        self.messages_sent.store(0, .monotonic);
+        self.messages_processed.store(0, .monotonic);
+        self.messages_failed.store(0, .monotonic);
+        self.messages_dropped.store(0, .monotonic);
+        self.memory_usage_bytes.store(0, .monotonic);
+        self.cpu_usage_percent.store(0, .monotonic);
+        self.thread_count.store(0, .monotonic);
+        self.avg_message_processing_time_ns.store(0, .monotonic);
+        self.max_message_processing_time_ns.store(0, .monotonic);
+        self.throughput_messages_per_second.store(0, .monotonic);
+    }
+    
+    pub fn print(self: *const SystemStats) void {
+        const uptime = self.uptime_ms.load(.monotonic);
+        const total_actors = self.total_actors.load(.monotonic);
+        const active_actors = self.active_actors.load(.monotonic);
+        const messages_sent = self.messages_sent.load(.monotonic);
+        const messages_processed = self.messages_processed.load(.monotonic);
+        const memory_usage = self.memory_usage_bytes.load(.monotonic);
+        const cpu_usage = self.cpu_usage_percent.load(.monotonic);
+        
+        std.log.info("System Stats:", .{});
+        std.log.info("  Uptime: {}ms", .{uptime});
+        std.log.info("  Actors: {}/{} (active/total)", .{ active_actors, total_actors });
+        std.log.info("  Messages: {}/{} (processed/sent)", .{ messages_processed, messages_sent });
+        std.log.info("  Memory: {} bytes", .{memory_usage});
+        std.log.info("  CPU: {}.{}%", .{ cpu_usage / 100, cpu_usage % 100 });
     }
 };
 
@@ -552,15 +604,15 @@ test "SystemStats operations" {
     var stats = SystemStats.init();
     
     stats.recordActorCreated();
-    try testing.expect(stats.total_actors.load(.Monotonic) == 1);
-    try testing.expect(stats.active_actors.load(.Monotonic) == 1);
+    try testing.expect(stats.total_actors.load(.monotonic) == 1);
+    try testing.expect(stats.active_actors.load(.monotonic) == 1);
     
     stats.recordMessageProcessed(1000);
-    try testing.expect(stats.messages_processed.load(.Monotonic) == 1);
-    try testing.expect(stats.avg_message_processing_time_ns.load(.Monotonic) == 1000);
+    try testing.expect(stats.messages_processed.load(.monotonic) == 1);
+    try testing.expect(stats.avg_message_processing_time_ns.load(.monotonic) == 1000);
     
     stats.recordMessageProcessed(2000);
-    const avg = stats.avg_message_processing_time_ns.load(.Monotonic);
+    const avg = stats.avg_message_processing_time_ns.load(.monotonic);
     try testing.expect(avg > 1000 and avg < 2000); // 应该是移动平均
     
     const snapshot = stats.getSnapshot();

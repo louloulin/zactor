@@ -18,64 +18,64 @@ pub const MemoryError = error{
 
 // 内存统计信息
 pub const MemoryStats = struct {
-    total_allocated: atomic.Atomic(u64),
-    total_freed: atomic.Atomic(u64),
-    current_allocated: atomic.Atomic(u64),
-    peak_allocated: atomic.Atomic(u64),
-    allocation_count: atomic.Atomic(u64),
-    free_count: atomic.Atomic(u64),
+    total_allocated: std.atomic.Value(u64),
+    total_freed: std.atomic.Value(u64),
+    current_allocated: std.atomic.Value(u64),
+    peak_allocated: std.atomic.Value(u64),
+    allocation_count: std.atomic.Value(u64),
+    free_count: std.atomic.Value(u64),
     
     pub fn init() MemoryStats {
         return MemoryStats{
-            .total_allocated = atomic.Atomic(u64).init(0),
-            .total_freed = atomic.Atomic(u64).init(0),
-            .current_allocated = atomic.Atomic(u64).init(0),
-            .peak_allocated = atomic.Atomic(u64).init(0),
-            .allocation_count = atomic.Atomic(u64).init(0),
-            .free_count = atomic.Atomic(u64).init(0),
+            .total_allocated = std.atomic.Value(u64).init(0),
+        .total_freed = std.atomic.Value(u64).init(0),
+        .current_allocated = std.atomic.Value(u64).init(0),
+        .peak_allocated = std.atomic.Value(u64).init(0),
+        .allocation_count = std.atomic.Value(u64).init(0),
+        .free_count = std.atomic.Value(u64).init(0),
         };
     }
     
     pub fn recordAllocation(self: *MemoryStats, size: usize) void {
-        _ = self.total_allocated.fetchAdd(size, .Release);
-        const current = self.current_allocated.fetchAdd(size, .Release) + size;
-        _ = self.allocation_count.fetchAdd(1, .Release);
+        _ = self.total_allocated.fetchAdd(size, .release);
+        const current = self.current_allocated.fetchAdd(size, .release) + size;
+        _ = self.allocation_count.fetchAdd(1, .release);
         
         // 更新峰值
-        var peak = self.peak_allocated.load(.Acquire);
+        var peak = self.peak_allocated.load(.acquire);
         while (current > peak) {
-            peak = self.peak_allocated.cmpxchgWeak(peak, current, .Release, .Acquire) orelse break;
+            peak = self.peak_allocated.cmpxchgWeak(peak, current, .release, .acquire) orelse break;
         }
     }
     
     pub fn recordFree(self: *MemoryStats, size: usize) void {
-        _ = self.total_freed.fetchAdd(size, .Release);
-        _ = self.current_allocated.fetchSub(size, .Release);
-        _ = self.free_count.fetchAdd(1, .Release);
+        _ = self.current_allocated.fetchSub(size, .release);
+        _ = self.total_freed.fetchAdd(size, .release);
+        _ = self.free_count.fetchAdd(1, .release);
     }
     
     pub fn getCurrentAllocated(self: *const MemoryStats) u64 {
-        return self.current_allocated.load(.Acquire);
+        return self.current_allocated.load(.acquire);
     }
     
     pub fn getPeakAllocated(self: *const MemoryStats) u64 {
-        return self.peak_allocated.load(.Acquire);
+        return self.peak_allocated.load(.acquire);
     }
     
     pub fn getTotalAllocated(self: *const MemoryStats) u64 {
-        return self.total_allocated.load(.Acquire);
+        return self.total_allocated.load(.acquire);
     }
     
     pub fn getTotalFreed(self: *const MemoryStats) u64 {
-        return self.total_freed.load(.Acquire);
+        return self.total_freed.load(.acquire);
     }
     
     pub fn getAllocationCount(self: *const MemoryStats) u64 {
-        return self.allocation_count.load(.Acquire);
+        return self.allocation_count.load(.acquire);
     }
     
     pub fn getFreeCount(self: *const MemoryStats) u64 {
-        return self.free_count.load(.Acquire);
+        return self.free_count.load(.acquire);
     }
     
     pub fn getFragmentationRatio(self: *const MemoryStats) f64 {
@@ -107,22 +107,23 @@ pub const StatsAllocator = struct {
                 .alloc = alloc,
                 .resize = resize,
                 .free = free,
+                .remap = Allocator.noRemap,
             },
         };
     }
     
-    fn alloc(ctx: *anyopaque, len: usize, log2_ptr_align: u8, ret_addr: usize) ?[*]u8 {
+    fn alloc(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const result = self.child_allocator.rawAlloc(len, log2_ptr_align, ret_addr);
+        const result = self.child_allocator.rawAlloc(len, ptr_align, ret_addr);
         if (result != null) {
             self.stats.recordAllocation(len);
         }
         return result;
     }
     
-    fn resize(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, new_len: usize, ret_addr: usize) bool {
+    fn resize(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const result = self.child_allocator.rawResize(buf, log2_buf_align, new_len, ret_addr);
+        const result = self.child_allocator.rawResize(buf, buf_align, new_len, ret_addr);
         if (result) {
             if (new_len > buf.len) {
                 self.stats.recordAllocation(new_len - buf.len);
@@ -133,9 +134,9 @@ pub const StatsAllocator = struct {
         return result;
     }
     
-    fn free(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, ret_addr: usize) void {
+    fn free(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, ret_addr: usize) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        self.child_allocator.rawFree(buf, log2_buf_align, ret_addr);
+        self.child_allocator.rawFree(buf, buf_align, ret_addr);
         self.stats.recordFree(buf.len);
     }
     
@@ -179,39 +180,39 @@ pub const ObjectPoolConfig = struct {
 
 // 对象池统计
 pub const ObjectPoolStats = struct {
-    objects_created: atomic.Atomic(u64),
-    objects_acquired: atomic.Atomic(u64),
-    objects_returned: atomic.Atomic(u64),
-    objects_destroyed: atomic.Atomic(u64),
-    pool_hits: atomic.Atomic(u64),
-    pool_misses: atomic.Atomic(u64),
-    current_pool_size: atomic.Atomic(usize),
-    peak_pool_size: atomic.Atomic(usize),
+    objects_created: std.atomic.Value(u64),
+    objects_acquired: std.atomic.Value(u64),
+    objects_returned: std.atomic.Value(u64),
+    objects_destroyed: std.atomic.Value(u64),
+    pool_hits: std.atomic.Value(u64),
+    pool_misses: std.atomic.Value(u64),
+    current_pool_size: std.atomic.Value(usize),
+    peak_pool_size: std.atomic.Value(usize),
     
     pub fn init() ObjectPoolStats {
         return ObjectPoolStats{
-            .objects_created = atomic.Atomic(u64).init(0),
-            .objects_acquired = atomic.Atomic(u64).init(0),
-            .objects_returned = atomic.Atomic(u64).init(0),
-            .objects_destroyed = atomic.Atomic(u64).init(0),
-            .pool_hits = atomic.Atomic(u64).init(0),
-            .pool_misses = atomic.Atomic(u64).init(0),
-            .current_pool_size = atomic.Atomic(usize).init(0),
-            .peak_pool_size = atomic.Atomic(usize).init(0),
+            .objects_created = std.atomic.Value(u64).init(0),
+        .objects_acquired = std.atomic.Value(u64).init(0),
+        .objects_returned = std.atomic.Value(u64).init(0),
+        .objects_destroyed = std.atomic.Value(u64).init(0),
+        .pool_hits = std.atomic.Value(u64).init(0),
+        .pool_misses = std.atomic.Value(u64).init(0),
+        .current_pool_size = std.atomic.Value(usize).init(0),
+        .peak_pool_size = std.atomic.Value(usize).init(0),
         };
     }
     
     pub fn getHitRate(self: *const ObjectPoolStats) f64 {
-        const hits = self.pool_hits.load(.Acquire);
-        const misses = self.pool_misses.load(.Acquire);
+        const hits = self.pool_hits.load(.acquire);
+        const misses = self.pool_misses.load(.acquire);
         const total = hits + misses;
         if (total == 0) return 0.0;
         return @as(f64, @floatFromInt(hits)) / @as(f64, @floatFromInt(total));
     }
     
     pub fn getUtilization(self: *const ObjectPoolStats) f64 {
-        const current = self.current_pool_size.load(.Acquire);
-        const peak = self.peak_pool_size.load(.Acquire);
+        const current = self.current_pool_size.load(.acquire);
+        const peak = self.peak_pool_size.load(.acquire);
         if (peak == 0) return 0.0;
         return @as(f64, @floatFromInt(current)) / @as(f64, @floatFromInt(peak));
     }
@@ -247,8 +248,8 @@ pub fn ObjectPool(comptime T: type) type {
                 try self.pool.append(obj);
             }
             
-            self.stats.current_pool_size.store(config.initial_capacity, .Release);
-            self.stats.peak_pool_size.store(config.initial_capacity, .Release);
+            self.stats.current_pool_size.store(config.initial_capacity, .release);
+            self.stats.peak_pool_size.store(config.initial_capacity, .release);
             
             return self;
         }
@@ -268,22 +269,23 @@ pub fn ObjectPool(comptime T: type) type {
             defer self.mutex.unlock();
             
             if (self.config.enable_stats) {
-                _ = self.stats.objects_acquired.fetchAdd(1, .Release);
+                _ = self.stats.objects_acquired.fetchAdd(1, .release);
             }
             
             // 尝试从池中获取
-            if (self.pool.popOrNull()) |obj| {
+            if (self.pool.items.len > 0) {
+                const obj = self.pool.pop().?; // 我们已经检查了长度，所以可以安全地解包
                 if (self.config.enable_stats) {
-                    _ = self.stats.pool_hits.fetchAdd(1, .Release);
-                    _ = self.stats.current_pool_size.fetchSub(1, .Release);
+                    _ = self.stats.pool_hits.fetchAdd(1, .release);
+                    _ = self.stats.current_pool_size.fetchSub(1, .release);
                 }
                 return obj;
             }
             
             // 池为空，创建新对象
             if (self.config.enable_stats) {
-                _ = self.stats.pool_misses.fetchAdd(1, .Release);
-                _ = self.stats.objects_created.fetchAdd(1, .Release);
+                _ = self.stats.pool_misses.fetchAdd(1, .release);
+                _ = self.stats.objects_created.fetchAdd(1, .release);
             }
             
             return self.allocator.create(T);
@@ -295,7 +297,7 @@ pub fn ObjectPool(comptime T: type) type {
             defer self.mutex.unlock();
             
             if (self.config.enable_stats) {
-                _ = self.stats.objects_returned.fetchAdd(1, .Release);
+                _ = self.stats.objects_returned.fetchAdd(1, .release);
             }
             
             // 检查池是否已满
@@ -303,7 +305,7 @@ pub fn ObjectPool(comptime T: type) type {
                 // 池已满，直接销毁对象
                 self.allocator.destroy(obj);
                 if (self.config.enable_stats) {
-                    _ = self.stats.objects_destroyed.fetchAdd(1, .Release);
+                    _ = self.stats.objects_destroyed.fetchAdd(1, .release);
                 }
                 return;
             }
@@ -312,12 +314,12 @@ pub fn ObjectPool(comptime T: type) type {
             try self.pool.append(obj);
             
             if (self.config.enable_stats) {
-                const new_size = self.stats.current_pool_size.fetchAdd(1, .Release) + 1;
+                const new_size = self.stats.current_pool_size.fetchAdd(1, .release) + 1;
                 // 更新峰值
-                var peak = self.stats.peak_pool_size.load(.Acquire);
-                while (new_size > peak) {
-                    peak = self.stats.peak_pool_size.cmpxchgWeak(peak, new_size, .Release, .Acquire) orelse break;
-                }
+                var peak = self.stats.peak_pool_size.load(.acquire);
+        while (new_size > peak) {
+            peak = self.stats.peak_pool_size.cmpxchgWeak(peak, new_size, .release, .acquire) orelse break;
+        }
             }
         }
         
@@ -336,13 +338,13 @@ pub fn ObjectPool(comptime T: type) type {
             for (self.pool.items) |obj| {
                 self.allocator.destroy(obj);
                 if (self.config.enable_stats) {
-                    _ = self.stats.objects_destroyed.fetchAdd(1, .Release);
+                    _ = self.stats.objects_destroyed.fetchAdd(1, .release);
                 }
             }
             self.pool.clearRetainingCapacity();
             
             if (self.config.enable_stats) {
-                self.stats.current_pool_size.store(0, .Release);
+                self.stats.current_pool_size.store(0, .release);
             }
         }
         
@@ -362,8 +364,8 @@ pub fn ObjectPool(comptime T: type) type {
                     if (self.pool.popOrNull()) |obj| {
                         self.allocator.destroy(obj);
                         if (self.config.enable_stats) {
-                            _ = self.stats.objects_destroyed.fetchAdd(1, .Release);
-                            _ = self.stats.current_pool_size.fetchSub(1, .Release);
+                            _ = self.stats.objects_destroyed.fetchAdd(1, .release);
+                            _ = self.stats.current_pool_size.fetchSub(1, .release);
                         }
                     }
                 }
@@ -378,7 +380,7 @@ pub fn ObjectPool(comptime T: type) type {
         // 重置统计信息
         pub fn resetStats(self: *Self) void {
             self.stats = ObjectPoolStats.init();
-            self.stats.current_pool_size.store(self.size(), .Release);
+            self.stats.current_pool_size.store(self.size(), .release);
         }
     };
 }
@@ -481,7 +483,7 @@ pub const MemoryPool = struct {
         // 查找对应的块
         var current = self.blocks;
         while (current) |block| {
-            if (ptr.ptr >= block.data.ptr and ptr.ptr < block.data.ptr + block.data.len) {
+            if (@intFromPtr(ptr.ptr) >= @intFromPtr(block.data.ptr) and @intFromPtr(ptr.ptr) < @intFromPtr(block.data.ptr) + block.data.len) {
                 if (!block.used) {
                     // 双重释放检测
                     return; // 或者可以返回错误
@@ -524,25 +526,27 @@ pub const AlignedAllocator = struct {
                 .alloc = alloc,
                 .resize = resize,
                 .free = free,
+                .remap = Allocator.noRemap,
             },
         };
     }
     
-    fn alloc(ctx: *anyopaque, len: usize, log2_ptr_align: u8, ret_addr: usize) ?[*]u8 {
+    fn alloc(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        const alignment = @max(self.alignment, @as(usize, 1) << @intCast(log2_ptr_align));
-        const log2_alignment = std.math.log2_int(usize, alignment);
-        return self.child_allocator.rawAlloc(len, @intCast(log2_alignment), ret_addr);
+        const alignment = @max(self.alignment, ptr_align.toByteUnits());
+        const final_log2_align: u8 = @intCast(std.math.log2_int(usize, alignment));
+        const final_align: std.mem.Alignment = @enumFromInt(final_log2_align);
+        return self.child_allocator.rawAlloc(len, final_align, ret_addr);
     }
     
-    fn resize(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, new_len: usize, ret_addr: usize) bool {
+    fn resize(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        return self.child_allocator.rawResize(buf, log2_buf_align, new_len, ret_addr);
+        return self.child_allocator.rawResize(buf, buf_align, new_len, ret_addr);
     }
     
-    fn free(ctx: *anyopaque, buf: []u8, log2_buf_align: u8, ret_addr: usize) void {
+    fn free(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, ret_addr: usize) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        self.child_allocator.rawFree(buf, log2_buf_align, ret_addr);
+        self.child_allocator.rawFree(buf, buf_align, ret_addr);
     }
 };
 
@@ -566,7 +570,6 @@ pub fn createAlignedAllocator(child_allocator: Allocator, alignment: usize) Alig
 // 便利函数
 pub fn alignedAlloc(allocator: Allocator, comptime T: type, alignment: usize, n: usize) ![]T {
     const byte_count = n * @sizeOf(T);
-    const log2_alignment = std.math.log2_int(usize, alignment);
     const bytes = try allocator.alignedAlloc(u8, alignment, byte_count);
     return @as([*]T, @ptrCast(@alignCast(bytes.ptr)))[0..n];
 }
@@ -626,9 +629,9 @@ test "ObjectPool" {
     try pool.release(obj4);
     
     const stats = pool.getStats();
-    try testing.expect(stats.objects_acquired.load(.Acquire) == 4);
-    try testing.expect(stats.objects_returned.load(.Acquire) == 4);
-    try testing.expect(stats.pool_hits.load(.Acquire) >= 1);
+    try testing.expect(stats.objects_acquired.load(.acquire) == 4);
+    try testing.expect(stats.objects_returned.load(.acquire) == 4);
+    try testing.expect(stats.pool_hits.load(.acquire) >= 1);
 }
 
 test "MemoryPool" {

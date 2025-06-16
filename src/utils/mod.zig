@@ -165,7 +165,7 @@ pub const utils = struct {
         @panic(msg);
     }
     
-    pub fn unreachable() noreturn {
+    pub fn panic() noreturn {
         std.debug.panic("Reached unreachable code", .{});
     }
 };
@@ -295,10 +295,28 @@ pub const UtilsConfig = struct {
     enable_metrics: bool,
     
     pub const default = UtilsConfig{
-        .ring_buffer = RingBufferConfig.default,
-        .thread_pool = ThreadPoolConfig.default,
+        .ring_buffer = .{
+            .capacity = 1024,
+            .allow_overwrite = false,
+            .thread_safe = true,
+            .cache_aligned = true,
+        },
+        .thread_pool = .{
+            .core_threads = 4,
+            .max_threads = 8,
+            .keep_alive_ms = 60000,
+            .queue_capacity = 1000,
+            .enable_work_stealing = true,
+            .thread_name_prefix = "ThreadPool-Worker",
+        },
         .memory = .{
-            .object_pool = ObjectPoolConfig.default,
+            .object_pool = .{
+                .initial_capacity = 1024,
+                .max_capacity = 8192,
+                .growth_factor = 2.0,
+                .shrink_threshold = 0.25,
+                .enable_stats = true,
+            },
             .enable_stats = true,
             .alignment = 16,
         },
@@ -307,10 +325,28 @@ pub const UtilsConfig = struct {
     };
     
     pub const development = UtilsConfig{
-        .ring_buffer = RingBufferConfig.development,
-        .thread_pool = ThreadPoolConfig.development,
+        .ring_buffer = .{
+            .capacity = 512,
+            .allow_overwrite = false,
+            .thread_safe = true,
+            .cache_aligned = true,
+        },
+        .thread_pool = .{
+            .core_threads = 2,
+            .max_threads = 4,
+            .keep_alive_ms = 30000,
+            .queue_capacity = 500,
+            .enable_work_stealing = true,
+            .thread_name_prefix = "Dev-Worker",
+        },
         .memory = .{
-            .object_pool = ObjectPoolConfig.default,
+            .object_pool = .{
+                .initial_capacity = 512,
+                .max_capacity = 4096,
+                .growth_factor = 1.5,
+                .shrink_threshold = 0.25,
+                .enable_stats = true,
+            },
             .enable_stats = true,
             .alignment = 16,
         },
@@ -319,10 +355,28 @@ pub const UtilsConfig = struct {
     };
     
     pub const production = UtilsConfig{
-        .ring_buffer = RingBufferConfig.production,
-        .thread_pool = ThreadPoolConfig.production,
+        .ring_buffer = .{
+            .capacity = 2048,
+            .allow_overwrite = false,
+            .thread_safe = true,
+            .cache_aligned = true,
+        },
+        .thread_pool = .{
+            .core_threads = 8,
+            .max_threads = 16,
+            .keep_alive_ms = 120000,
+            .queue_capacity = 2000,
+            .enable_work_stealing = true,
+            .thread_name_prefix = "Prod-Worker",
+        },
         .memory = .{
-            .object_pool = ObjectPoolConfig.fixed,
+            .object_pool = .{
+                .initial_capacity = 2048,
+                .max_capacity = 16384,
+                .growth_factor = 2.0,
+                .shrink_threshold = 0.25,
+                .enable_stats = false,
+            },
             .enable_stats = false,
             .alignment = 64,
         },
@@ -339,32 +393,45 @@ pub const UtilsStats = struct {
     
     pub fn init() UtilsStats {
         return UtilsStats{
-            .ring_buffer_stats = RingBufferStats.init(),
+            .ring_buffer_stats = .{},
             .thread_pool_stats = ThreadPoolStats.init(),
             .memory_stats = MemoryStats.init(),
         };
     }
     
     pub fn reset(self: *UtilsStats) void {
-        self.ring_buffer_stats.reset();
-        self.thread_pool_stats.reset();
-        self.memory_stats.reset();
+        self.ring_buffer_stats = .{};
+        self.thread_pool_stats = ThreadPoolStats.init();
+        self.memory_stats = MemoryStats.init();
     }
     
     pub fn getTotalAllocations(self: *const UtilsStats) u64 {
-        return self.memory_stats.total_allocations.load(.Monotonic);
+        return self.memory_stats.total_allocated.load(.monotonic);
     }
     
     pub fn getTotalDeallocations(self: *const UtilsStats) u64 {
-        return self.memory_stats.total_deallocations.load(.Monotonic);
+        return self.memory_stats.total_freed.load(.monotonic);
     }
     
     pub fn getCurrentMemoryUsage(self: *const UtilsStats) u64 {
-        return self.memory_stats.current_memory_usage.load(.Monotonic);
+        return self.memory_stats.current_allocated.load(.monotonic);
     }
     
     pub fn getPeakMemoryUsage(self: *const UtilsStats) u64 {
-        return self.memory_stats.peak_memory_usage.load(.Monotonic);
+        return self.memory_stats.peak_allocated.load(.monotonic);
+    }
+    
+    pub fn print(self: *const UtilsStats) void {
+        const total_alloc = self.memory_stats.total_allocated.load(.monotonic);
+        const total_freed = self.memory_stats.total_freed.load(.monotonic);
+        const current_alloc = self.memory_stats.current_allocated.load(.monotonic);
+        const peak_alloc = self.memory_stats.peak_allocated.load(.monotonic);
+        
+        std.log.info("Utils Stats:", .{});
+        std.log.info("  Memory - Total Allocated: {} bytes", .{total_alloc});
+        std.log.info("  Memory - Total Freed: {} bytes", .{total_freed});
+        std.log.info("  Memory - Current Usage: {} bytes", .{current_alloc});
+        std.log.info("  Memory - Peak Usage: {} bytes", .{peak_alloc});
     }
 };
 
@@ -390,7 +457,7 @@ pub const UtilsModule = struct {
     
     pub fn createRingBuffer(self: *UtilsModule, comptime T: type, capacity: usize) !*RingBuffer(T) {
         if (!self.initialized) return UtilsError.InvalidState;
-        return createRingBuffer(T, self.allocator, capacity, self.config.ring_buffer);
+        return ring_buffer.createRingBuffer(T, self.allocator, capacity, self.config.ring_buffer);
     }
     
     pub fn createObjectPool(self: *UtilsModule, comptime T: type) !*ObjectPool(T) {

@@ -101,11 +101,11 @@ Cargo.lock
 # Local configuration
 config.local.*
 settings.local.*
-
+*.o
 # Build scripts output
 build.log
 install.log
-
+test_compile
 # Performance test data
 perf.data*
 *.perf

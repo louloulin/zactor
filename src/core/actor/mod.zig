@@ -9,9 +9,10 @@ pub const Actor = @import("actor.zig").Actor;
 pub const ActorRef = @import("actor_ref.zig").ActorRef;
 pub const ActorContext = @import("actor_context.zig").ActorContext;
 pub const ActorSystem = @import("actor_system.zig").ActorSystem;
-pub const ActorBehavior = @import("behavior.zig").ActorBehavior;
+// TODO: 待实现的模块
+// pub const ActorBehavior = @import("behavior.zig").ActorBehavior;
 pub const ActorState = @import("state.zig").ActorState;
-pub const ActorLifecycle = @import("lifecycle.zig").ActorLifecycle;
+// pub const ActorLifecycle = @import("lifecycle.zig").ActorLifecycle;
 
 // Actor相关类型和错误
 pub const ActorError = error{
@@ -142,7 +143,7 @@ pub const ActorPath = struct {
         var segments = std.ArrayList([]const u8).init(allocator);
         defer segments.deinit();
         
-        var iter = std.mem.split(u8, path, "/");
+        var iter = std.mem.splitScalar(u8, path, '/');
         while (iter.next()) |segment| {
             if (segment.len > 0) {
                 const owned_segment = try allocator.dupe(u8, segment);
@@ -234,6 +235,8 @@ pub const ActorSelection = struct {
     }
     
     pub fn resolveAll(self: *ActorSelection, allocator: Allocator) ![]ActorRef {
+        _ = self;
+        _ = allocator;
         // 实现通配符匹配和多个actor解析
         _ = allocator;
         return error.NotImplemented;

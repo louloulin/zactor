@@ -190,7 +190,7 @@ pub const ActorSystem = struct {
         const parent = self.actors.get(parent_path);
         
         // 创建Actor路径对象
-        var path_obj = try ActorPath.init(self.allocator, actor_path);
+        const path_obj = try ActorPath.init(self.allocator, actor_path);
         
         // 创建Actor实例
         const actor = try self.createActor(props, path_obj, parent);
