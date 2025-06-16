@@ -174,6 +174,15 @@ pub fn build(b: *std.Build) void {
     });
     actor_system_diagnosis.root_module.addImport("zactor", zactor_module);
 
+    // 快速启动测试
+    const fast_startup_test = b.addExecutable(.{
+        .name = "fast_startup_test",
+        .root_source_file = b.path("examples/fast_startup_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    fast_startup_test.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
@@ -186,6 +195,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(ultra_performance_benchmark);
     b.installArtifact(simple_actor_benchmark);
     b.installArtifact(actor_system_diagnosis);
+    b.installArtifact(fast_startup_test);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -199,6 +209,7 @@ pub fn build(b: *std.Build) void {
     const run_ultra_performance_benchmark = b.addRunArtifact(ultra_performance_benchmark);
     const run_simple_actor_benchmark = b.addRunArtifact(simple_actor_benchmark);
     const run_actor_system_diagnosis = b.addRunArtifact(actor_system_diagnosis);
+    const run_fast_startup_test = b.addRunArtifact(fast_startup_test);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -232,6 +243,9 @@ pub fn build(b: *std.Build) void {
 
     const actor_diagnosis_step = b.step("actor-diagnosis", "Run actor system diagnosis");
     actor_diagnosis_step.dependOn(&run_actor_system_diagnosis.step);
+
+    const fast_startup_step = b.step("fast-startup-test", "Run fast startup test");
+    fast_startup_step.dependOn(&run_fast_startup_test.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{

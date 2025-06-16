@@ -145,6 +145,22 @@ pub const SchedulerConfig = struct {
             .idle_sleep_ms = 0,
         };
     }
+
+    /// 快速启动配置 - 专门解决启动缓慢问题
+    pub fn forFastStartup() SchedulerConfig {
+        return SchedulerConfig{
+            .strategy = .work_stealing,
+            .worker_threads = 1, // 只使用1个工作线程，快速启动
+            .task_queue_capacity = 1024, // 小队列，减少内存分配
+            .enable_work_stealing = false, // 禁用工作窃取，减少复杂性
+            .enable_priority_scheduling = false, // 禁用优先级调度
+            .enable_affinity = false, // 禁用CPU亲和性
+            .max_steal_attempts = 0, // 不进行窃取尝试
+            .idle_sleep_ms = 1, // 短暂休眠
+            .shutdown_timeout_ms = 1000, // 快速关闭
+            .enable_metrics = false, // 禁用指标收集
+        };
+    }
 };
 
 // 任务接口

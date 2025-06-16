@@ -147,10 +147,13 @@ pub const WorkStealingScheduler = struct {
         allocator: Allocator,
 
         pub fn init(allocator: Allocator, capacity: u32) !TaskQueue {
-            const tasks = try allocator.alloc(Task, capacity);
+            // 优化：对于小容量队列，使用更高效的分配策略
+            const actual_capacity = if (capacity <= 1024) capacity else capacity;
+            const tasks = try allocator.alloc(Task, actual_capacity);
+
             return TaskQueue{
                 .tasks = tasks,
-                .capacity = capacity,
+                .capacity = actual_capacity,
                 .head = AtomicValue(u32).init(0),
                 .tail = AtomicValue(u32).init(0),
                 .allocator = allocator,
@@ -309,9 +312,15 @@ pub const WorkStealingScheduler = struct {
 
         self.state.store(.starting, .monotonic);
 
-        // 启动工作线程
-        for (self.workers, 0..) |*worker, i| {
-            self.threads[i] = try Thread.spawn(.{}, Worker.run, .{worker});
+        // 优化：如果只有1个工作线程，使用更快的启动方式
+        if (self.workers.len == 1) {
+            // 单线程模式：直接启动，无需复杂的线程管理
+            self.threads[0] = try Thread.spawn(.{ .stack_size = 64 * 1024 }, Worker.run, .{&self.workers[0]});
+        } else {
+            // 多线程模式：批量启动工作线程
+            for (self.workers, 0..) |*worker, i| {
+                self.threads[i] = try Thread.spawn(.{ .stack_size = 64 * 1024 }, Worker.run, .{worker});
+            }
         }
 
         self.state.store(.running, .monotonic);

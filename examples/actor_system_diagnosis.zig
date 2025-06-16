@@ -37,7 +37,7 @@ fn diagnoseActorSystemStartup(allocator: std.mem.Allocator) !DiagnosisResult {
 
     const start_time = std.time.nanoTimestamp();
 
-    var system = try zactor.ActorSystem.init("diagnosis", zactor.Config.default(), allocator);
+    var system = try zactor.ActorSystem.init("diagnosis", zactor.SystemConfiguration.fastStartup(), allocator);
     defer system.deinit();
 
     try system.start();
@@ -66,7 +66,7 @@ fn diagnoseActorSystemStartup(allocator: std.mem.Allocator) !DiagnosisResult {
 fn diagnoseActorCreation(allocator: std.mem.Allocator) !DiagnosisResult {
     print("Diagnosing Actor creation...\n", .{});
 
-    var system = try zactor.ActorSystem.init("creation-test", zactor.Config.default(), allocator);
+    var system = try zactor.ActorSystem.init("creation-test", zactor.SystemConfiguration.fastStartup(), allocator);
     defer system.deinit();
     try system.start();
     std.time.sleep(50 * std.time.ns_per_ms);
@@ -162,7 +162,7 @@ const SimpleActorBehavior = struct {
 fn diagnoseMessageSending(allocator: std.mem.Allocator) !DiagnosisResult {
     print("Diagnosing message sending...\n", .{});
 
-    var system = try zactor.ActorSystem.init("send-test", zactor.Config.default(), allocator);
+    var system = try zactor.ActorSystem.init("send-test", zactor.SystemConfiguration.fastStartup(), allocator);
     defer system.deinit();
     try system.start();
     std.time.sleep(50 * std.time.ns_per_ms);
@@ -216,7 +216,8 @@ fn diagnoseMessageSending(allocator: std.mem.Allocator) !DiagnosisResult {
 fn diagnoseScheduler(allocator: std.mem.Allocator) !DiagnosisResult {
     print("Diagnosing scheduler...\n", .{});
 
-    var system = try zactor.ActorSystem.init("scheduler-test", zactor.Config.default(), allocator);
+    // 使用快速启动配置进行诊断
+    var system = try zactor.ActorSystem.init("scheduler-test", zactor.SystemConfiguration.fastStartup(), allocator);
     defer system.deinit();
 
     const start_time = std.time.nanoTimestamp();

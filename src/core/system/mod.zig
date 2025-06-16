@@ -174,6 +174,24 @@ pub const SystemConfiguration = struct {
             .security_provider = .tls,
         };
     }
+
+    /// 快速启动配置 - 专门解决启动缓慢问题
+    pub fn fastStartup() SystemConfiguration {
+        return SystemConfiguration{
+            .name = "zactor-fast",
+            .scheduler_config = SchedulerConfig.forFastStartup(),
+            .default_mailbox_capacity = 256, // 小邮箱，快速创建
+            .shutdown_timeout_ms = 1000, // 快速关闭
+            .max_actors = 1000, // 限制Actor数量
+            .actor_creation_timeout_ms = 1000, // 快速创建超时
+            .enable_monitoring = false, // 禁用监控
+            .enable_deadlock_detection = false, // 禁用死锁检测
+            .enable_memory_pooling = false, // 禁用内存池
+            .enable_debug_logging = false, // 禁用调试日志
+            .log_level = .err, // 只记录错误
+            .enable_tracing = false, // 禁用追踪
+        };
+    }
 };
 
 // 系统组件接口
