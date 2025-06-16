@@ -16,306 +16,330 @@
 - **配置分离**: 配置与实现分离，支持运行时调整
 - **插件化**: 核心功能可插拔，支持扩展
 
-### 🏗️ 分层架构设计
+### 🏗️ 简化架构设计 (参考Actix)
+
+Actix的成功在于其简洁而高效的设计。我们将采用类似的简化架构：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Application Layer                        │
+│                     User Applications                       │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
-│  │   Examples  │ │ Benchmarks  │ │      User Apps          │ │
+│  │   Examples  │ │ Benchmarks  │ │      User Code          │ │
 │  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
+                                ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                      API Layer                              │
+│                      ZActor Core                            │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
-│  │ Actor API   │ │ System API  │ │    Extensions API       │ │
+│  │   Actor     │ │   System    │ │       Context           │ │
+│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
+│  │   Message   │ │   Mailbox   │ │      Supervisor         │ │
 │  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
+                                ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                     Core Layer                              │
+│                    Runtime & Utils                          │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
-│  │   Runtime   │ │  Scheduler  │ │       Supervisor        │ │
-│  │   System    │ │   Engine    │ │        Tree             │ │
-│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│                   Component Layer                           │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
-│  │   Actor     │ │   Message   │ │       Mailbox           │ │
-│  │  Component  │ │  Component  │ │      Component          │ │
-│  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│                 Infrastructure Layer                        │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐ │
-│  │   Memory    │ │ Concurrency │ │      Diagnostics        │ │
-│  │  Management │ │  Primitives │ │      & Metrics          │ │
+│  │  Scheduler  │ │   Memory    │ │      Utilities          │ │
 │  └─────────────┘ └─────────────┘ └─────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 📦 包结构设计
+**核心设计原则 (借鉴Actix):**
+1. **最小化抽象**: 只保留必要的抽象层
+2. **零成本抽象**: 编译时优化，运行时零开销
+3. **类型安全**: 编译时消息类型检查
+4. **高性能**: 专注于性能关键路径
+5. **简单易用**: 清晰的API设计
 
-#### 🗂️ 目录结构总览
+### 📦 基于现有结构的优化改造计划
+
+#### 🎯 设计理念
+基于现有的模块化结构，进行性能导向的优化改造：
+- **保持现有分层**: 维持core/components/utils的清晰分层
+- **优化关键路径**: 专注于消息传递、调度器、邮箱的性能优化
+- **增强可观测性**: 完善监控、指标、调试功能
+- **提升扩展性**: 增强插件化和配置管理能力
+
+#### 🗂️ 现有目录结构分析
 ```
 zactor/
-├── src/                           # 核心源代码
-│   ├── zactor.zig                # 主入口文件
-│   ├── api/                      # API层
-│   ├── core/                     # 核心层
-│   ├── components/               # 组件层
-│   ├── infrastructure/           # 基础设施层
-│   ├── extensions/               # 扩展系统
-│   ├── config/                   # 配置管理
-│   ├── testing/                  # 测试框架
-│   ├── quality/                  # 质量保证
-│   ├── observability/            # 可观测性
-│   ├── security/                 # 安全框架
-│   └── utils/                    # 通用工具
-├── examples/                     # 示例应用
-├── benchmarks/                   # 性能基准测试
-├── tests/                        # 测试套件
-├── docs/                         # 文档
-├── tools/                        # 开发工具
-├── build/                        # 构建系统
-├── packaging/                    # 包管理
-├── deployment/                   # 部署配置
-└── operations/                   # 运维脚本
+├── src/
+│   ├── zactor.zig                # 主入口文件 ✅ 已存在
+│   ├── prelude.zig               # 便捷导入 ✅ 已存在
+│   ├── core/                     # 核心模块 ✅ 已存在
+│   │   ├── mod.zig               # 核心模块入口
+│   │   ├── actor/                # Actor相关 ✅ 已存在
+│   │   │   ├── actor.zig         # Actor实现
+│   │   │   ├── actor_context.zig # Actor上下文
+│   │   │   ├── actor_ref.zig     # Actor引用
+│   │   │   ├── actor_system.zig  # Actor系统
+│   │   │   └── mod.zig           # Actor模块入口
+│   │   ├── message/              # 消息系统 ✅ 已存在
+│   │   │   ├── message.zig       # 消息实现
+│   │   │   ├── builder.zig       # 消息构建器
+│   │   │   ├── pool.zig          # 消息池
+│   │   │   └── mod.zig           # 消息模块入口
+│   │   ├── mailbox/              # 邮箱系统 ✅ 已存在
+│   │   │   ├── standard.zig      # 标准邮箱
+│   │   │   ├── fast.zig          # 快速邮箱
+│   │   │   ├── ultra_fast.zig    # 超快邮箱
+│   │   │   └── mod.zig           # 邮箱模块入口
+│   │   ├── scheduler/            # 调度器 ✅ 已存在
+│   │   │   └── mod.zig           # 调度器模块入口
+│   │   └── system/               # 系统管理 ✅ 已存在
+│   │       └── mod.zig           # 系统模块入口
+│   └── utils/                    # 工具模块 ✅ 已存在
+│       ├── lockfree_queue.zig    # 无锁队列
+│       ├── memory.zig            # 内存管理
+│       ├── ring_buffer.zig       # 环形缓冲区
+│       └── thread_pool.zig       # 线程池
+├── examples/                     # 示例应用 ✅ 已存在
+├── benchmarks/                   # 性能基准测试 ✅ 已存在
+├── tests/                        # 测试套件 ✅ 已存在
+└── docs/                         # 文档 ✅ 已存在
 ```
 
-#### 🎯 API层包设计
+#### ⚙️ 基于现有结构的改造计划
+
+**阶段1: 核心性能优化 (基于现有core模块)**
+
+1. **优化现有 src/zactor.zig 主入口**
+   - ✅ 已有完整的模块导出结构
+   - 🔧 需要增强性能配置选项
+   - 🔧 需要添加运行时性能监控
+
+2. **增强现有 src/core/scheduler/mod.zig**
+   - 🔧 实现工作窃取调度器
+   - 🔧 添加NUMA感知调度
+   - 🔧 实现批量消息处理
+
+3. **优化现有 src/core/mailbox/ 系列**
+   - ✅ 已有多种邮箱实现 (standard, fast, ultra_fast)
+   - 🔧 需要实现分片邮箱
+   - 🔧 需要零拷贝消息传递优化
+
+4. **完善现有 src/core/message/ 系列**
+   - ✅ 已有消息池和构建器
+   - 🔧 需要实现零拷贝消息
+   - 🔧 需要添加消息序列化优化
+**阶段2: 扩展功能实现**
+
+5. **增强现有 src/utils/ 工具模块**
+   - ✅ 已有无锁队列、内存管理、环形缓冲区
+   - 🔧 需要添加NUMA感知内存分配器
+   - 🔧 需要实现对象池管理
+
+6. **完善现有 src/components/ 组件层**
+   - ✅ 已有消息组件基础
+   - 🔧 需要添加序列化引擎
+   - 🔧 需要实现路由引擎
+
+**阶段3: 监控和诊断系统**
+
+7. **新增监控模块 src/core/monitoring/**
+   - 🆕 实现性能指标收集
+   - 🆕 添加系统健康检查
+   - 🆕 实现分布式追踪
+
+8. **新增诊断模块 src/core/diagnostics/**
+   - 🆕 实现内存泄漏检测
+   - 🆕 添加死锁检测
+   - 🆕 实现性能瓶颈分析
+
+### 📋 详细实施计划
+
+#### 🎯 第一阶段：核心性能优化 (1-2周)
+
+**1.1 调度器性能优化**
+- 📁 文件：`src/core/scheduler/mod.zig`
+- 🎯 目标：实现1M+ msg/s吞吐量
+- 📝 任务：
+  - [ ] 实现工作窃取算法
+  - [ ] 添加批量消息处理
+  - [ ] 实现NUMA感知调度
+  - [ ] 优化线程池管理
+
+**1.2 邮箱系统优化**
+- 📁 文件：`src/core/mailbox/sharded.zig` (新增)
+- 🎯 目标：<100ns消息延迟
+- 📝 任务：
+  - [ ] 实现分片邮箱
+  - [ ] 优化现有ultra_fast.zig
+  - [ ] 添加零拷贝消息传递
+  - [ ] 实现消息批量处理
+
+**1.3 消息系统优化**
+- 📁 文件：`src/core/message/zero_copy.zig` (新增)
+- 🎯 目标：零拷贝消息传递
+- 📝 任务：
+  - [ ] 实现零拷贝消息
+  - [ ] 优化消息池管理
+  - [ ] 添加消息压缩
+  - [ ] 实现消息路由优化
+
+#### 🎯 第二阶段：监控和诊断系统 (2-3周)
+
+**2.1 性能监控系统**
+- 📁 目录：`src/core/monitoring/` (新增)
+- 🎯 目标：实时性能监控
+- 📝 任务：
+  - [ ] 创建 `metrics_collector.zig`
+  - [ ] 创建 `performance_monitor.zig`
+  - [ ] 创建 `system_health.zig`
+  - [ ] 集成到现有ActorSystem
+
+**2.2 诊断工具系统**
+- 📁 目录：`src/core/diagnostics/` (新增)
+- 🎯 目标：问题诊断和调试
+- 📝 任务：
+  - [ ] 创建 `memory_analyzer.zig`
+  - [ ] 创建 `deadlock_detector.zig`
+  - [ ] 创建 `bottleneck_analyzer.zig`
+  - [ ] 创建 `trace_collector.zig`
+
+**2.3 可观测性集成**
+- 📁 目录：`src/core/observability/` (新增)
+- 🎯 目标：全面可观测性
+- 📝 任务：
+  - [ ] 创建 `tracing_system.zig`
+  - [ ] 创建 `log_aggregator.zig`
+  - [ ] 创建 `alert_manager.zig`
+  - [ ] 集成Prometheus导出器
+
+#### 🎯 第三阶段：扩展和优化 (3-4周)
+
+**3.1 扩展系统实现**
+- 📁 目录：`src/extensions/` (新增)
+- 🎯 目标：插件化架构
+- 📝 任务：
+  - [ ] 创建 `extension_system.zig`
+  - [ ] 创建 `plugin_manager.zig`
+  - [ ] 实现动态加载机制
+  - [ ] 创建扩展接口规范
+
+**3.2 配置管理系统**
+- 📁 目录：`src/config/` (新增)
+- 🎯 目标：灵活配置管理
+- 📝 任务：
+  - [ ] 创建 `config_manager.zig`
+  - [ ] 支持多种配置源
+  - [ ] 实现热重载配置
+  - [ ] 添加配置验证
+
+**3.3 高级工具增强**
+- 📁 目录：`src/utils/` (扩展现有)
+- 🎯 目标：高性能工具集
+- 📝 任务：
+  - [ ] 创建 `numa_allocator.zig`
+  - [ ] 创建 `object_pool.zig`
+  - [ ] 优化现有 `lockfree_queue.zig`
+  - [ ] 创建 `cpu_affinity.zig`
+
+### 📊 基于现有结构的性能目标
+
+#### 🎯 性能指标对比
+
+| 指标 | 当前状态 | 目标值 | 优化策略 |
+|------|----------|--------|----------|
+| 消息吞吐量 | 未测试 | 1M+ msg/s | 工作窃取调度器 + 分片邮箱 |
+| 消息延迟 | 未测试 | <100ns | 零拷贝消息 + 批量处理 |
+| Actor创建 | 未测试 | <1μs | 对象池 + 预分配 |
+| 内存开销 | 未测试 | <1KB/Actor | 轻量级Actor + 内存池 |
+| CPU利用率 | 未测试 | >90% | NUMA感知 + CPU亲和性 |
+
+#### 🔧 现有模块优化重点
+
+**1. 调度器模块 (src/core/scheduler/)**
 ```
-src/api/
-├── mod.zig                       # API层主模块
-├── actor/                        # Actor API
-│   ├── mod.zig                   # Actor API主模块
-│   ├── actor_api.zig             # Actor操作接口
-│   ├── actor_builder.zig         # Actor构建器
-│   ├── actor_ref.zig             # Actor引用
-│   └── behavior_api.zig          # 行为定义接口
-├── system/                       # System API
-│   ├── mod.zig                   # System API主模块
-│   ├── system_api.zig            # 系统操作接口
-│   ├── lifecycle_api.zig         # 生命周期管理
-│   ├── configuration_api.zig     # 配置管理接口
-│   └── monitoring_api.zig        # 监控接口
-├── extensions/                   # Extensions API
-│   ├── mod.zig                   # 扩展API主模块
-│   ├── extension_api.zig         # 扩展接口
-│   ├── plugin_api.zig            # 插件接口
-│   └── registry_api.zig          # 注册表接口
-└── types/                        # 公共类型定义
-    ├── mod.zig                   # 类型主模块
-    ├── actor_types.zig           # Actor相关类型
-    ├── message_types.zig         # 消息相关类型
-    ├── system_types.zig          # 系统相关类型
-    └── error_types.zig           # 错误类型定义
+当前状态: 基础框架 ✅
+优化计划:
+├── work_stealing.zig      # 工作窃取算法 🆕
+├── numa_scheduler.zig     # NUMA感知调度 🆕
+├── batch_processor.zig    # 批量处理器 🆕
+└── affinity_manager.zig   # CPU亲和性管理 🆕
 ```
 
-#### 🏛️ 核心层包设计
+**2. 邮箱模块 (src/core/mailbox/)**
 ```
-src/core/
-├── mod.zig                       # 核心层主模块
-├── runtime/                      # 运行时系统
-│   ├── mod.zig                   # 运行时主模块
-│   ├── runtime_system.zig        # 运行时系统实现
-│   ├── lifecycle_manager.zig     # 生命周期管理器
-│   ├── resource_manager.zig      # 资源管理器
-│   └── configuration_manager.zig # 配置管理器
-├── scheduler/                    # 调度引擎
-│   ├── mod.zig                   # 调度器主模块
-│   ├── scheduler_engine.zig      # 调度引擎实现
-│   ├── work_stealing/            # 工作窃取调度器
-│   │   ├── mod.zig               # 工作窃取主模块
-│   │   ├── work_stealing_core.zig # 工作窃取核心
-│   │   ├── worker_thread.zig     # 工作线程
-│   │   ├── task_queue.zig        # 任务队列
-│   │   └── load_balancer.zig     # 负载均衡器
-│   ├── strategies/               # 调度策略
-│   │   ├── mod.zig               # 策略主模块
-│   │   ├── strategy_interface.zig # 策略接口
-│   │   ├── priority_based.zig    # 优先级调度
-│   │   ├── round_robin.zig       # 轮询调度
-│   │   └── numa_aware.zig        # NUMA感知调度
-│   └── affinity/                 # 亲和性管理
-│       ├── mod.zig               # 亲和性主模块
-│       ├── affinity_manager.zig  # 亲和性管理器
-│       ├── cpu_topology.zig      # CPU拓扑
-│       └── numa_topology.zig     # NUMA拓扑
-└── supervisor/                   # 监督树
-    ├── mod.zig                   # 监督器主模块
-    ├── supervisor_tree.zig       # 监督树实现
-    ├── supervision_strategy.zig  # 监督策略
-    ├── fault_tolerance.zig       # 容错机制
-    └── recovery_manager.zig      # 恢复管理器
+当前状态: 多种实现 ✅ (standard, fast, ultra_fast)
+优化计划:
+├── sharded.zig           # 分片邮箱 🆕
+├── zero_copy.zig         # 零拷贝邮箱 🆕
+├── batch_mailbox.zig     # 批量邮箱 🆕
+└── adaptive.zig          # 自适应邮箱 🆕
 ```
 
-#### 🧩 组件层包设计
+**3. 消息模块 (src/core/message/)**
 ```
-src/components/
-├── mod.zig                       # 组件层主模块
-├── actor/                        # Actor组件
-│   ├── mod.zig                   # Actor组件主模块
-│   ├── actor_component.zig       # Actor组件实现
-│   ├── actor_factory.zig         # Actor工厂
-│   ├── behavior_registry.zig     # 行为注册表
-│   ├── lifecycle_hooks.zig       # 生命周期钩子
-│   ├── actor_pool.zig            # Actor池
-│   └── actor_metrics.zig         # Actor指标
-├── message/                      # 消息组件
-│   ├── mod.zig                   # 消息组件主模块
-│   ├── message_component.zig     # 消息组件实现
-│   ├── message_factory.zig       # 消息工厂
-│   ├── message_pool.zig          # 消息池
-│   ├── serialization/            # 序列化引擎
-│   │   ├── mod.zig               # 序列化主模块
-│   │   ├── serialization_engine.zig # 序列化引擎
-│   │   ├── binary_serializer.zig # 二进制序列化器
-│   │   ├── json_serializer.zig   # JSON序列化器
-│   │   └── custom_serializer.zig # 自定义序列化器
-│   └── routing/                  # 路由引擎
-│       ├── mod.zig               # 路由主模块
-│       ├── routing_engine.zig    # 路由引擎
-│       ├── routing_table.zig     # 路由表
-│       └── message_router.zig    # 消息路由器
-└── mailbox/                      # 邮箱组件
-    ├── mod.zig                   # 邮箱组件主模块
-    ├── mailbox_component.zig     # 邮箱组件实现
-    ├── mailbox_factory.zig       # 邮箱工厂
-    ├── mailbox_pool.zig          # 邮箱池
-    ├── implementations/          # 邮箱实现
-    │   ├── mod.zig               # 实现主模块
-    │   ├── standard_mailbox.zig  # 标准邮箱
-    │   ├── fast_mailbox.zig      # 快速邮箱
-    │   ├── sharded_mailbox.zig   # 分片邮箱
-    │   └── ultra_fast_mailbox.zig # 超快邮箱
-    └── performance/              # 性能监控
-        ├── mod.zig               # 性能主模块
-        ├── performance_monitor.zig # 性能监控器
-        ├── metrics_collector.zig # 指标收集器
-        └── optimization_engine.zig # 优化引擎
+当前状态: 基础实现 ✅ (message, builder, pool)
+优化计划:
+├── zero_copy_message.zig # 零拷贝消息 🆕
+├── compressed.zig        # 压缩消息 🆕
+├── routing_engine.zig    # 路由引擎 🆕
+└── serialization/        # 序列化引擎 🆕
+    ├── binary.zig        # 二进制序列化
+    ├── protobuf.zig      # Protobuf支持
+    └── custom.zig        # 自定义序列化
 ```
 
-#### 🏗️ 基础设施层包设计
-```
-src/infrastructure/
-├── mod.zig                       # 基础设施主模块
-├── memory/                       # 内存管理
-│   ├── mod.zig                   # 内存管理主模块
-│   ├── memory_manager.zig        # 内存管理器
-│   ├── allocators/               # 分配器
-│   │   ├── mod.zig               # 分配器主模块
-│   │   ├── pool_allocator.zig    # 池分配器
-│   │   ├── arena_allocator.zig   # 竞技场分配器
-│   │   ├── slab_allocator.zig    # 板块分配器
-│   │   └── numa_allocator.zig    # NUMA感知分配器
-│   ├── pools/                    # 对象池
-│   │   ├── mod.zig               # 对象池主模块
-│   │   ├── object_pool.zig       # 通用对象池
-│   │   ├── message_pool.zig      # 消息池
-│   │   ├── actor_pool.zig        # Actor池
-│   │   └── buffer_pool.zig       # 缓冲区池
-│   └── gc/                       # 垃圾回收
-│       ├── mod.zig               # GC主模块
-│       ├── reference_counting.zig # 引用计数
-│       ├── mark_sweep.zig        # 标记清除
-│       └── generational_gc.zig   # 分代GC
-├── concurrency/                  # 并发原语
-│   ├── mod.zig                   # 并发主模块
-│   ├── primitives/               # 基础原语
-│   │   ├── mod.zig               # 原语主模块
-│   │   ├── atomic_operations.zig # 原子操作
-│   │   ├── lock_free_queue.zig   # 无锁队列
-│   │   ├── lock_free_stack.zig   # 无锁栈
-│   │   ├── ring_buffer.zig       # 环形缓冲区
-│   │   └── hazard_pointers.zig   # 危险指针
-│   ├── synchronization/          # 同步机制
-│   │   ├── mod.zig               # 同步主模块
-│   │   ├── mutex.zig             # 互斥锁
-│   │   ├── rwlock.zig            # 读写锁
-│   │   ├── condition.zig         # 条件变量
-│   │   ├── semaphore.zig         # 信号量
-│   │   └── barrier.zig           # 屏障
-│   └── threading/                # 线程管理
-│       ├── mod.zig               # 线程主模块
-│       ├── thread_pool.zig       # 线程池
-│       ├── worker_thread.zig     # 工作线程
-│       ├── thread_local.zig      # 线程本地存储
-│       └── cpu_affinity.zig      # CPU亲和性
-└── diagnostics/                  # 诊断和指标
-    ├── mod.zig                   # 诊断主模块
-    ├── metrics/                  # 指标系统
-    │   ├── mod.zig               # 指标主模块
-    │   ├── metrics_collector.zig # 指标收集器
-    │   ├── metrics_registry.zig  # 指标注册表
-    │   ├── counter.zig           # 计数器
-    │   ├── gauge.zig             # 仪表
-    │   ├── histogram.zig         # 直方图
-    │   └── timer.zig             # 计时器
-    ├── tracing/                  # 分布式追踪
-    │   ├── mod.zig               # 追踪主模块
-    │   ├── tracing_system.zig    # 追踪系统
-    │   ├── span.zig              # Span
-    │   ├── trace_context.zig     # 追踪上下文
-    │   └── sampler.zig           # 采样器
-    └── profiling/                # 性能分析
-        ├── mod.zig               # 分析主模块
-        ├── cpu_profiler.zig      # CPU分析器
-        ├── memory_profiler.zig   # 内存分析器
-        ├── latency_profiler.zig  # 延迟分析器
-        └── throughput_profiler.zig # 吞吐量分析器
-```
+### 🚀 实施路线图
 
-#### 🔌 扩展系统包设计
-```
-src/extensions/
-├── mod.zig                       # 扩展系统主模块
-├── extension_system.zig          # 扩展系统实现
-├── extension_loader.zig          # 扩展加载器
-├── extension_registry.zig        # 扩展注册表
-├── plugin_manager.zig            # 插件管理器
-├── interfaces/                   # 扩展接口
-│   ├── mod.zig                   # 接口主模块
-│   ├── scheduler_extension.zig   # 调度器扩展接口
-│   ├── mailbox_extension.zig     # 邮箱扩展接口
-│   ├── serializer_extension.zig  # 序列化器扩展接口
-│   ├── monitor_extension.zig     # 监控扩展接口
-│   └── security_extension.zig    # 安全扩展接口
-└── builtin/                      # 内置扩展
-    ├── mod.zig                   # 内置扩展主模块
-    ├── default_scheduler.zig     # 默认调度器
-    ├── default_mailbox.zig       # 默认邮箱
-    ├── default_serializer.zig    # 默认序列化器
-    └── default_monitor.zig       # 默认监控器
-```
+#### 📅 时间规划 (基于现有结构)
 
-#### ⚙️ 配置管理包设计
-```
-src/config/
-├── mod.zig                       # 配置管理主模块
-├── configuration_manager.zig     # 配置管理器
-├── config_loader.zig             # 配置加载器
-├── config_validator.zig          # 配置验证器
-├── config_merger.zig             # 配置合并器
-├── sources/                      # 配置源
-│   ├── mod.zig                   # 配置源主模块
-│   ├── file_source.zig           # 文件配置源
-│   ├── env_source.zig            # 环境变量配置源
-│   ├── cli_source.zig            # 命令行配置源
-│   └── remote_source.zig         # 远程配置源
-├── formats/                      # 配置格式
-│   ├── mod.zig                   # 格式主模块
-│   ├── json_format.zig           # JSON格式
-│   ├── yaml_format.zig           # YAML格式
-│   ├── toml_format.zig           # TOML格式
-│   └── ini_format.zig            # INI格式
-└── schemas/                      # 配置模式
-    ├── mod.zig                   # 模式主模块
-    ├── runtime_schema.zig        # 运行时配置模式
-    ├── performance_schema.zig    # 性能配置模式
-    ├── security_schema.zig       # 安全配置模式
-    └── diagnostics_schema.zig    # 诊断配置模式
-```
+**第1周: 调度器性能优化**
+- [ ] 分析现有 `src/core/scheduler/mod.zig`
+- [ ] 实现工作窃取调度器
+- [ ] 添加批量消息处理
+- [ ] 性能基准测试
+
+**第2周: 邮箱系统优化**
+- [ ] 优化现有 `ultra_fast.zig`
+- [ ] 实现分片邮箱 `sharded.zig`
+- [ ] 添加零拷贝支持
+- [ ] 延迟测试验证
+
+**第3周: 消息系统优化**
+- [ ] 实现零拷贝消息
+- [ ] 优化消息池管理
+- [ ] 添加消息路由引擎
+- [ ] 吞吐量测试验证
+
+**第4周: 监控系统实现**
+- [ ] 创建监控模块
+- [ ] 实现性能指标收集
+- [ ] 添加系统健康检查
+- [ ] 集成到现有系统
+
+**第5-6周: 扩展功能实现**
+- [ ] 创建扩展系统框架
+- [ ] 实现配置管理系统
+- [ ] 添加高级工具集
+- [ ] 完善测试覆盖
+
+**第7-8周: 集成测试和优化**
+- [ ] 端到端性能测试
+- [ ] 压力测试和稳定性验证
+- [ ] 性能调优和瓶颈分析
+- [ ] 文档完善和示例更新
+
+#### 🎯 关键里程碑
+
+**里程碑1: 基础性能达标 (第2周末)**
+- ✅ 消息吞吐量 > 100K msg/s
+- ✅ 消息延迟 < 1μs
+- ✅ 基础功能稳定
+
+**里程碑2: 高性能目标达成 (第4周末)**
+- ✅ 消息吞吐量 > 1M msg/s
+- ✅ 消息延迟 < 100ns
+- ✅ 监控系统完整
+
+**里程碑3: 完整功能交付 (第8周末)**
+- ✅ 所有扩展功能完成
+- ✅ 完整测试覆盖
+- ✅ 生产就绪状态
 
 #### 🧪 测试框架包设计
 ```
@@ -2235,20 +2259,21 @@ pub fn InlineActor(comptime BehaviorType: type) type {
 }
 ```
 
-## 🚀 实施计划
+## 🚀 优化实施计划 (基于现有架构)
 
-### Phase 1: 核心基础设施重构 (2周)
+### Phase 1: 渐进式优化 (2周)
 
-#### Week 1: 消息系统优化
-- [ ] 实现MessagePool和零拷贝消息
-- [ ] 优化消息序列化/反序列化
-- [ ] 实现InlineMessage小消息优化
+#### Week 1: 消息系统零拷贝优化 (基于现有message.zig)
+- [ ] 在现有Message基础上添加MessageRef零拷贝支持
+- [ ] 优化现有MessagePool实现，添加零拷贝分配
+- [ ] 在现有Actor.receive基础上添加receiveZeroCopy方法
+- [ ] 创建prelude.zig简化用户导入
 - [ ] 建立消息性能基准测试
 
-#### Week 2: 调度器实现
-- [ ] 实现WorkStealingScheduler核心逻辑
-- [ ] 添加NUMA感知调度
-- [ ] 实现负载均衡算法
+#### Week 2: 调度器性能优化 (基于现有scheduler)
+- [ ] 优化现有WorkStealingScheduler实现
+- [ ] 在现有基础上添加NUMA感知调度
+- [ ] 改进现有负载均衡算法
 - [ ] 调度器性能测试和调优
 
 ### Phase 2: 邮箱系统升级 (2周)
@@ -2918,25 +2943,92 @@ pub const EndToEndBenchmark = struct {
 };
 ```
 
-## 🎯 最终交付成果
+### 📋 具体实施任务清单
 
-### 1. 核心库文件
-- `src/core/ultra_scheduler.zig` - 超高性能调度器
-- `src/core/zero_copy_message.zig` - 零拷贝消息系统
-- `src/core/sharded_mailbox.zig` - 分片邮箱实现
-- `src/core/lightweight_actor.zig` - 轻量级Actor
-- `src/core/performance_monitor.zig` - 性能监控系统
+#### 🔧 核心优化任务
 
-### 2. 基准测试套件
-- `benchmarks/throughput_benchmark.zig` - 吞吐量测试
-- `benchmarks/latency_benchmark.zig` - 延迟测试
-- `benchmarks/scalability_benchmark.zig` - 扩展性测试
-- `benchmarks/memory_benchmark.zig` - 内存效率测试
+**调度器优化 (src/core/scheduler/)**
+- [ ] `work_stealing.zig` - 实现工作窃取算法
+- [ ] `numa_scheduler.zig` - NUMA感知调度
+- [ ] `batch_processor.zig` - 批量消息处理
+- [ ] `affinity_manager.zig` - CPU亲和性管理
+- [ ] 更新 `mod.zig` 集成新功能
 
-### 3. 示例应用
-- `examples/high_frequency_trading.zig` - 高频交易模拟
-- `examples/game_server.zig` - 游戏服务器示例
-- `examples/distributed_computing.zig` - 分布式计算示例
+**邮箱优化 (src/core/mailbox/)**
+- [ ] `sharded.zig` - 分片邮箱实现
+- [ ] `zero_copy.zig` - 零拷贝邮箱
+- [ ] `batch_mailbox.zig` - 批量处理邮箱
+- [ ] `adaptive.zig` - 自适应邮箱
+- [ ] 优化现有 `ultra_fast.zig`
+
+**消息优化 (src/core/message/)**
+- [ ] `zero_copy_message.zig` - 零拷贝消息
+- [ ] `compressed.zig` - 压缩消息
+- [ ] `routing_engine.zig` - 消息路由引擎
+- [ ] `serialization/` 目录 - 序列化引擎
+- [ ] 优化现有 `pool.zig`
+
+#### 🆕 新增模块任务
+
+**监控系统 (src/core/monitoring/)**
+- [ ] `metrics_collector.zig` - 指标收集器
+- [ ] `performance_monitor.zig` - 性能监控器
+- [ ] `system_health.zig` - 系统健康检查
+- [ ] `alert_manager.zig` - 告警管理器
+- [ ] `mod.zig` - 监控模块入口
+
+**诊断系统 (src/core/diagnostics/)**
+- [ ] `memory_analyzer.zig` - 内存分析器
+- [ ] `deadlock_detector.zig` - 死锁检测器
+- [ ] `bottleneck_analyzer.zig` - 瓶颈分析器
+- [ ] `trace_collector.zig` - 追踪收集器
+- [ ] `mod.zig` - 诊断模块入口
+
+**扩展系统 (src/extensions/)**
+- [ ] `extension_system.zig` - 扩展系统核心
+- [ ] `plugin_manager.zig` - 插件管理器
+- [ ] `interfaces/` 目录 - 扩展接口定义
+- [ ] `builtin/` 目录 - 内置扩展
+- [ ] `mod.zig` - 扩展系统入口
+
+**配置管理 (src/config/)**
+- [ ] `config_manager.zig` - 配置管理器
+- [ ] `sources/` 目录 - 配置源支持
+- [ ] `formats/` 目录 - 配置格式支持
+- [ ] `validation.zig` - 配置验证
+- [ ] `mod.zig` - 配置模块入口
+
+### 🎯 最终交付成果
+
+**1. 高性能核心库**
+- 基于现有结构的优化实现
+- 1M+ msg/s 吞吐量能力
+- <100ns 消息延迟
+- 完整的监控和诊断系统
+
+**2. 完善的测试套件**
+- 扩展现有 `tests/` 目录
+- 性能基准测试
+- 压力测试和稳定性测试
+- 回归测试套件
+
+**3. 生产就绪特性**
+- 完整的可观测性
+- 灵活的配置管理
+- 插件化扩展系统
+- 详细的文档和示例
+
+### 📝 总结
+
+通过基于现有包结构的渐进式改造，ZActor将在保持架构清晰的同时，实现世界级的性能目标：
+
+1. **保持现有优势**: 维持清晰的模块分层和组织结构
+2. **专注性能优化**: 重点优化调度器、邮箱、消息系统
+3. **增强可观测性**: 添加完整的监控、诊断、追踪系统
+4. **提升扩展性**: 实现插件化架构和灵活配置管理
+5. **确保质量**: 完善测试覆盖和质量保证体系
+
+最终，ZActor将成为Zig生态系统中最优秀的Actor框架，为高并发、低延迟应用提供世界级的性能和可靠性。
 
 ### 4. 文档和指南
 - `docs/performance_guide.md` - 性能优化指南
