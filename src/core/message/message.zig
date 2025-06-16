@@ -154,8 +154,9 @@ pub const MessageMetadata = struct {
 // 消息负载
 pub const MessagePayload = union(enum) {
     none,
-    bytes: []const u8,
-    string: []const u8,
+    bytes: []const u8, // 需要释放的字节数据
+    string: []const u8, // 需要释放的字符串数据
+    static_string: []const u8, // 不需要释放的静态字符串
     integer: i64,
     float: f64,
     boolean: bool,
@@ -167,6 +168,9 @@ pub const MessagePayload = union(enum) {
             .bytes, .string, .json, .binary => |data| {
                 allocator.free(data);
             },
+            .static_string => {
+                // 不释放静态字符串
+            },
             else => {},
         }
     }
@@ -176,6 +180,7 @@ pub const MessagePayload = union(enum) {
             .none => .none,
             .bytes => |data| .{ .bytes = try allocator.dupe(u8, data) },
             .string => |data| .{ .string = try allocator.dupe(u8, data) },
+            .static_string => |data| .{ .static_string = data }, // 静态字符串不需要复制
             .integer => |val| .{ .integer = val },
             .float => |val| .{ .float = val },
             .boolean => |val| .{ .boolean = val },
@@ -187,7 +192,7 @@ pub const MessagePayload = union(enum) {
     pub fn getSize(self: MessagePayload) usize {
         return switch (self) {
             .none => 0,
-            .bytes, .string, .json, .binary => |data| data.len,
+            .bytes, .string, .static_string, .json, .binary => |data| data.len,
             .integer => @sizeOf(i64),
             .float => @sizeOf(f64),
             .boolean => @sizeOf(bool),
@@ -215,8 +220,9 @@ pub const Message = struct {
     }
 
     pub fn createSystem(system_type: SystemMessage, data: ?[]const u8) Message {
+        // 对于系统消息，我们不复制数据，因为通常是静态字符串
         const payload = if (data) |d|
-            MessagePayload{ .bytes = d }
+            MessagePayload{ .static_string = d } // 使用static_string，不会被释放
         else
             MessagePayload.none;
 
@@ -228,8 +234,9 @@ pub const Message = struct {
     }
 
     pub fn createUser(user_type: UserMessage, data: ?[]const u8) Message {
+        // 对于用户消息，也使用static_string避免释放问题
         const payload = if (data) |d|
-            MessagePayload{ .bytes = d }
+            MessagePayload{ .static_string = d }
         else
             MessagePayload.none;
 
@@ -329,7 +336,7 @@ pub const Message = struct {
 
     pub fn getPayloadAsBytes(self: *const Message) ?[]const u8 {
         return switch (self.payload) {
-            .bytes, .string, .json, .binary => |data| data,
+            .bytes, .string, .static_string, .json, .binary => |data| data,
             else => null,
         };
     }
