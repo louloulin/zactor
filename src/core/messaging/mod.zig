@@ -16,3 +16,8 @@ pub const ZeroCopyMessage = @import("zero_copy.zig").ZeroCopyMessage;
 pub const ZeroCopyMessageHeader = @import("zero_copy.zig").ZeroCopyMessageHeader;
 pub const ZeroCopyMemoryPool = @import("zero_copy.zig").ZeroCopyMemoryPool;
 pub const ZeroCopyMessenger = @import("zero_copy.zig").ZeroCopyMessenger;
+
+// 超高性能消息传递核心
+pub const UltraFastMessageCore = @import("ultra_fast_core.zig").UltraFastMessageCore;
+pub const LockFreeRingBuffer = @import("ultra_fast_core.zig").LockFreeRingBuffer;
+pub const PreAllocatedArena = @import("ultra_fast_core.zig").PreAllocatedArena;

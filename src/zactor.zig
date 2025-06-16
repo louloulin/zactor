@@ -49,6 +49,7 @@ pub const SupervisorConfig = core.actor.SupervisorConfig;
 pub const messaging = core.messaging;
 pub const message = core.message;
 pub const scheduler = core.scheduler;
+pub const memory = core.memory;
 
 // Core types
 pub const ActorId = u64;

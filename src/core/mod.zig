@@ -10,6 +10,7 @@ pub const message = @import("message/mod.zig");
 pub const messaging = @import("messaging/mod.zig");
 pub const scheduler = @import("scheduler/mod.zig");
 pub const system = @import("system/mod.zig");
+pub const memory = @import("memory/mod.zig");
 
 // 重新导出常用类型以便于访问
 // Actor相关

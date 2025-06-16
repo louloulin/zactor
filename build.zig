@@ -66,6 +66,18 @@ pub fn build(b: *std.Build) void {
     const high_performance_test_step = b.step("test-high-performance", "Run high performance tests");
     high_performance_test_step.dependOn(&run_high_performance_tests.step);
 
+    // Ultra performance tests
+    const ultra_performance_tests = b.addTest(.{
+        .root_source_file = b.path("tests/ultra_performance_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ultra_performance_tests.root_module.addImport("zactor", zactor_module);
+
+    const run_ultra_performance_tests = b.addRunArtifact(ultra_performance_tests);
+    const ultra_performance_test_step = b.step("test-ultra-performance", "Run ultra performance tests");
+    ultra_performance_test_step.dependOn(&run_ultra_performance_tests.step);
+
     // Examples
     const basic_example = b.addExecutable(.{
         .name = "basic_example",
@@ -135,6 +147,15 @@ pub fn build(b: *std.Build) void {
     });
     high_performance_benchmark.root_module.addImport("zactor", zactor_module);
 
+    // 超高性能基准测试
+    const ultra_performance_benchmark = b.addExecutable(.{
+        .name = "ultra_performance_benchmark",
+        .root_source_file = b.path("examples/ultra_performance_benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ultra_performance_benchmark.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
@@ -144,6 +165,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(ring_buffer_benchmark);
     b.installArtifact(simple_ring_buffer_test);
     b.installArtifact(high_performance_benchmark);
+    b.installArtifact(ultra_performance_benchmark);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -154,6 +176,7 @@ pub fn build(b: *std.Build) void {
     const run_ring_buffer_benchmark = b.addRunArtifact(ring_buffer_benchmark);
     const run_simple_ring_buffer_test = b.addRunArtifact(simple_ring_buffer_test);
     const run_high_performance_benchmark = b.addRunArtifact(high_performance_benchmark);
+    const run_ultra_performance_benchmark = b.addRunArtifact(ultra_performance_benchmark);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -178,6 +201,9 @@ pub fn build(b: *std.Build) void {
 
     const high_performance_benchmark_step = b.step("high-perf-benchmark", "Run high performance benchmark");
     high_performance_benchmark_step.dependOn(&run_high_performance_benchmark.step);
+
+    const ultra_performance_benchmark_step = b.step("ultra-perf-benchmark", "Run ultra performance benchmark");
+    ultra_performance_benchmark_step.dependOn(&run_ultra_performance_benchmark.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{
