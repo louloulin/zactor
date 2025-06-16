@@ -60,9 +60,15 @@ pub const SystemConfiguration = struct {
 
     // 调度器配置
     scheduler_config: SchedulerConfig = SchedulerConfig{},
+    scheduler_threads: u32 = 0, // 0 = auto-detect, 兼容性字段
+    enable_work_stealing: bool = true, // 兼容性字段
 
     // Actor配置
     default_mailbox_capacity: u32 = 1024,
+    mailbox_capacity: u32 = 1024, // 兼容性字段
+
+    // 关闭配置
+    shutdown_timeout_ms: u64 = 30000, // 30秒关闭超时
     max_actors: u32 = 100000,
     actor_creation_timeout_ms: u64 = 5000,
 

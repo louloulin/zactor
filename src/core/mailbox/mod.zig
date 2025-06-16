@@ -21,6 +21,8 @@ pub const MailboxConfig = struct {
     batch_size: u32 = 100,
     enable_statistics: bool = true,
     enable_backpressure: bool = true,
+    use_memory_pool: bool = false,
+    pool_size: ?u32 = null,
 
     pub fn default() MailboxConfig {
         return MailboxConfig{};
@@ -72,8 +74,8 @@ pub const MailboxInterface = struct {
     ptr: *anyopaque,
 
     pub const VTable = struct {
-        send: *const fn (ptr: *anyopaque, message: *Message) anyerror!void,
-        receive: *const fn (ptr: *anyopaque) ?*Message,
+        send: *const fn (ptr: *anyopaque, message: Message) anyerror!void,
+        receive: *const fn (ptr: *anyopaque) ?Message,
         isEmpty: *const fn (ptr: *anyopaque) bool,
         size: *const fn (ptr: *anyopaque) u32,
         capacity: *const fn (ptr: *anyopaque) u32,
@@ -81,11 +83,11 @@ pub const MailboxInterface = struct {
         getStats: *const fn (ptr: *anyopaque) ?*MailboxStats,
     };
 
-    pub fn send(self: Self, message: *Message) !void {
+    pub fn send(self: Self, message: Message) !void {
         return self.vtable.send(self.ptr, message);
     }
 
-    pub fn receive(self: Self) ?*Message {
+    pub fn receive(self: Self) ?Message {
         return self.vtable.receive(self.ptr);
     }
 

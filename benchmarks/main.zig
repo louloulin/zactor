@@ -69,7 +69,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
     zactor.metrics.reset();
 
     // Create actor system
-    var system = try zactor.ActorSystem.init("benchmark-system", zactor.SystemConfiguration.default(), allocator);
+    var system = try zactor.ActorSystem.init("benchmark-system", zactor.Config.default(), allocator);
     defer system.deinit();
 
     try system.start();
@@ -89,7 +89,7 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
 
     // Send messages to all actors
     for (0..config.messages_per_actor) |msg_num| {
-        for (actors) |actor_ref| {
+        for (actors) |*actor_ref| {
             const message_data = try std.fmt.allocPrint(allocator, "message_{}", .{msg_num});
             defer allocator.free(message_data);
 
@@ -134,10 +134,9 @@ fn runThroughputBenchmark(allocator: std.mem.Allocator, config: BenchmarkConfig)
 
     // Get system stats
     const stats = system.getStats();
-    defer stats.deinit(allocator);
     stats.print();
 
-    system.shutdown();
+    try system.shutdown();
 }
 
 fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
@@ -153,7 +152,7 @@ fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
 
     zactor.metrics.reset();
 
-    var system = try zactor.ActorSystem.init("latency-benchmark", zactor.SystemConfiguration.default(), allocator);
+    var system = try zactor.ActorSystem.init("latency-benchmark", zactor.Config.default(), allocator);
     defer system.deinit();
 
     try system.start();
@@ -211,7 +210,7 @@ fn runLatencyBenchmark(allocator: std.mem.Allocator) !void {
     std.log.info("P99 latency: {d:.2} μs", .{@as(f64, @floatFromInt(p99_latency)) / 1000.0});
     std.log.info("Max latency: {d:.2} μs", .{@as(f64, @floatFromInt(max_latency)) / 1000.0});
 
-    system.shutdown();
+    try system.shutdown();
 }
 
 fn runScalabilityBenchmark(allocator: std.mem.Allocator) !void {
@@ -256,7 +255,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         zactor.metrics.reset();
 
-        var system = try zactor.ActorSystem.init("no-supervision-benchmark", zactor.SystemConfiguration.default(), allocator);
+        var system = try zactor.ActorSystem.init("no-supervision-benchmark", zactor.Config.default(), allocator);
         defer system.deinit();
 
         try system.start();
@@ -273,7 +272,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         // Send messages
         for (0..messages_per_actor) |msg_num| {
-            for (actors) |actor_ref| {
+            for (actors) |*actor_ref| {
                 const message_data = try std.fmt.allocPrint(allocator, "msg_{}", .{msg_num});
                 defer allocator.free(message_data);
                 try actor_ref.send([]const u8, message_data, allocator);
@@ -294,7 +293,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
         std.log.info("  Duration: {d:.2} ms", .{duration_ms});
         std.log.info("  Throughput: {d:.0} messages/second", .{throughput});
 
-        system.shutdown();
+        try system.shutdown();
     }
 
     // Test with supervision
@@ -311,7 +310,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         zactor.metrics.reset();
 
-        var system = try zactor.ActorSystem.init("supervision-benchmark", zactor.SystemConfiguration.default(), allocator);
+        var system = try zactor.ActorSystem.init("supervision-benchmark", zactor.Config.default(), allocator);
         defer system.deinit();
 
         // Configure supervision
@@ -335,7 +334,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
 
         // Send messages
         for (0..messages_per_actor) |msg_num| {
-            for (actors) |actor_ref| {
+            for (actors) |*actor_ref| {
                 const message_data = try std.fmt.allocPrint(allocator, "msg_{}", .{msg_num});
                 defer allocator.free(message_data);
                 try actor_ref.send([]const u8, message_data, allocator);
@@ -359,7 +358,7 @@ fn runSupervisionBenchmark(allocator: std.mem.Allocator) !void {
         const supervisor_stats = system.getSupervisorStats();
         supervisor_stats.print();
 
-        system.shutdown();
+        try system.shutdown();
     }
 }
 

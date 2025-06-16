@@ -109,26 +109,33 @@ pub const ActorSystem = struct {
         // 初始化守护者Actor
         try self.initGuardians();
 
+        // 设置为初始化完成状态
+        self.state.store(.starting, .seq_cst);
+
+        return self;
+    }
+
+    pub fn start(self: *Self) !void {
         // 启动调度器
         try self.scheduler.start();
 
         // 设置为运行状态
-        self.state.store(.running, .SeqCst);
-
-        return self;
+        self.state.store(.running, .seq_cst);
     }
 
     pub fn deinit(self: *Self) void {
         // 确保系统已关闭
         self.shutdown() catch {};
 
+        // 获取allocator的副本，因为我们稍后会销毁self
+        const allocator = self.allocator;
+
         self.mutex.lock();
-        defer self.mutex.unlock();
 
         // 清理Actor
         var actor_iter = self.actors.iterator();
         while (actor_iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
+            allocator.free(entry.key_ptr.*);
             // ActorRef会在其自己的deinit中清理
         }
         self.actors.deinit();
@@ -143,7 +150,7 @@ pub const ActorSystem = struct {
         // 清理扩展
         var ext_iter = self.extensions.iterator();
         while (ext_iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
+            allocator.free(entry.key_ptr.*);
             entry.value_ptr.*.deinit();
         }
         self.extensions.deinit();
@@ -152,10 +159,13 @@ pub const ActorSystem = struct {
         self.scheduler.deinit();
 
         // 清理名称
-        self.allocator.free(self.name);
+        allocator.free(self.name);
+
+        // 解锁mutex
+        self.mutex.unlock();
 
         // 销毁自身
-        self.allocator.destroy(self);
+        allocator.destroy(self);
     }
 
     // 系统管理
@@ -164,7 +174,7 @@ pub const ActorSystem = struct {
     }
 
     pub fn getState(self: *Self) ActorSystemState {
-        return self.state.load(.SeqCst);
+        return self.state.load(.seq_cst);
     }
 
     pub fn getScheduler(self: *Self) *Scheduler {
@@ -187,9 +197,18 @@ pub const ActorSystem = struct {
         return self.createActorAt(props, "/user", name);
     }
 
+    pub fn spawn(self: *Self, comptime ActorType: type, init_data: anytype) !ActorRef {
+        _ = ActorType;
+        _ = init_data;
+        // 简化的spawn实现 - 创建一个基本的Actor
+        const props = ActorProps.create(GuardianBehavior.create);
+        const actor_ref_ptr = try self.actorOf(props, null);
+        return actor_ref_ptr.*;
+    }
+
     pub fn createActorAt(self: *Self, props: ActorProps, parent_path: []const u8, name: ?[]const u8) !*ActorRef {
-        if (self.state.load(.SeqCst) != .running) {
-            return ActorError.SystemNotRunning;
+        if (self.state.load(.seq_cst) != .running) {
+            return ActorError.ActorSystemShutdown;
         }
 
         self.mutex.lock();
@@ -222,8 +241,7 @@ pub const ActorSystem = struct {
         try self.actors.put(try self.allocator.dupe(u8, actor_path), actor_ref.getActorRef());
 
         // 更新统计信息
-        self.stats.actors_created += 1;
-        self.stats.total_actors += 1;
+        self.stats.recordActorCreated();
 
         self.allocator.free(actor_path);
         return actor_ref.getActorRef();
@@ -237,8 +255,12 @@ pub const ActorSystem = struct {
         const mailbox_config = MailboxConfig.default();
         const mailbox = try MailboxFactory.create(mailbox_config, self.allocator);
 
+        // 分配邮箱指针
+        const mailbox_ptr = try self.allocator.create(MailboxInterface);
+        mailbox_ptr.* = mailbox;
+
         // 创建Actor实例
-        const actor = try Actor.init(self.allocator, props.config, &mailbox);
+        const actor = try Actor.init(self.allocator, props.config, mailbox_ptr);
 
         // 创建Actor行为
         const behavior = try props.behavior_factory(&actor.context);
@@ -260,8 +282,7 @@ pub const ActorSystem = struct {
 
         if (self.actors.fetchRemove(path_str)) |entry| {
             self.allocator.free(entry.key);
-            self.stats.actors_stopped += 1;
-            self.stats.total_actors -= 1;
+            self.stats.recordActorTerminated();
         }
     }
 
@@ -329,15 +350,18 @@ pub const ActorSystem = struct {
 
     // 系统生命周期
     pub fn shutdown(self: *Self) !void {
-        const current_state = self.state.load(.SeqCst);
+        const current_state = self.state.load(.seq_cst);
         if (current_state == .terminated or current_state == .terminating) {
             return;
         }
 
-        self.state.store(.terminating, .SeqCst);
+        self.state.store(.terminating, .seq_cst);
+
+        // 创建停止消息
+        var stop_message = Message.createSystem(.stop, null);
 
         // 停止用户Guardian
-        try self.user_guardian.tell(.stop, null);
+        try self.user_guardian.tell(&stop_message, null);
 
         // 等待所有Actor停止
         try self.waitForTermination(self.config.shutdown_timeout_ms);
@@ -345,14 +369,14 @@ pub const ActorSystem = struct {
         // 停止调度器
         try self.scheduler.stop();
 
-        self.state.store(.terminated, .SeqCst);
+        self.state.store(.terminated, .seq_cst);
         self.shutdown_signal.set();
     }
 
     pub fn awaitTermination(self: *Self, timeout_ms: u64) !void {
         const start_time = std.time.milliTimestamp();
 
-        while (self.state.load(.SeqCst) != .terminated) {
+        while (self.state.load(.seq_cst) != .terminated) {
             if (std.time.milliTimestamp() - start_time > timeout_ms) {
                 return ActorError.TimeoutError;
             }
@@ -383,19 +407,22 @@ pub const ActorSystem = struct {
         const guardian_props = ActorProps.create(GuardianBehavior.create);
         const guardian_path = try ActorPath.init(self.allocator, "/");
         const guardian_actor = try self.createActor(guardian_props, guardian_path, null);
-        self.guardian = try LocalActorRef.init(guardian_actor, guardian_path, self.allocator).getActorRef();
+        const guardian_local_ref = try LocalActorRef.init(guardian_actor, guardian_path, self.allocator);
+        self.guardian = guardian_local_ref.getActorRef();
 
         // 创建用户Guardian
         const user_guardian_props = ActorProps.create(UserGuardianBehavior.create);
         const user_guardian_path = try ActorPath.init(self.allocator, "/user");
         const user_guardian_actor = try self.createActor(user_guardian_props, user_guardian_path, self.guardian);
-        self.user_guardian = try LocalActorRef.init(user_guardian_actor, user_guardian_path, self.allocator).getActorRef();
+        const user_guardian_local_ref = try LocalActorRef.init(user_guardian_actor, user_guardian_path, self.allocator);
+        self.user_guardian = user_guardian_local_ref.getActorRef();
 
         // 创建系统Guardian
         const system_guardian_props = ActorProps.create(SystemGuardianBehavior.create);
         const system_guardian_path = try ActorPath.init(self.allocator, "/system");
         const system_guardian_actor = try self.createActor(system_guardian_props, system_guardian_path, self.guardian);
-        self.system_guardian = try LocalActorRef.init(system_guardian_actor, system_guardian_path, self.allocator).getActorRef();
+        const system_guardian_local_ref = try LocalActorRef.init(system_guardian_actor, system_guardian_path, self.allocator);
+        self.system_guardian = system_guardian_local_ref.getActorRef();
 
         // 注册Guardian
         try self.actors.put(try self.allocator.dupe(u8, "/"), self.guardian);
@@ -406,13 +433,62 @@ pub const ActorSystem = struct {
     fn waitForTermination(self: *Self, timeout_ms: u64) !void {
         const start_time = std.time.milliTimestamp();
 
-        while (self.stats.total_actors > 3) { // 只剩下3个Guardian
+        while (self.stats.total_actors.load(.monotonic) > 3) { // 只剩下3个Guardian
             if (std.time.milliTimestamp() - start_time > timeout_ms) {
                 return ActorError.TimeoutError;
             }
 
             std.time.sleep(10_000_000); // 10ms
         }
+    }
+
+    pub fn awaitQuiescence(self: *Self, timeout_ms: u64) !void {
+        // 等待所有消息处理完成
+        const timeout_ns = timeout_ms * std.time.ns_per_ms;
+        const start_time = std.time.nanoTimestamp();
+
+        while (true) {
+            const current_time = std.time.nanoTimestamp();
+            if (current_time - start_time > timeout_ns) {
+                return ActorError.TimeoutError;
+            }
+
+            // 简单的静默检测 - 检查是否有活跃的消息处理
+            const current_processed = self.stats.messages_processed.load(.monotonic);
+            std.time.sleep(10 * std.time.ns_per_ms); // 等待10ms
+            const new_processed = self.stats.messages_processed.load(.monotonic);
+
+            if (current_processed == new_processed) {
+                // 没有新消息被处理，认为达到静默状态
+                break;
+            }
+        }
+    }
+
+    pub fn setSupervisorConfig(self: *Self, config: anytype) void {
+        _ = self;
+        _ = config;
+        // 简化实现 - 暂时不做任何操作
+    }
+
+    pub fn getSupervisorStats(self: *Self) SupervisorStats {
+        _ = self;
+        return SupervisorStats{
+            .restarts = 0,
+            .failures = 0,
+        };
+    }
+};
+
+// 监督统计信息
+pub const SupervisorStats = struct {
+    restarts: u64,
+    failures: u64,
+
+    pub fn print(self: *const SupervisorStats) void {
+        std.log.info("Supervisor Stats:", .{});
+        std.log.info("  Restarts: {}", .{self.restarts});
+        std.log.info("  Failures: {}", .{self.failures});
     }
 };
 
@@ -526,13 +602,13 @@ const UserGuardianBehavior = struct {
     fn preRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
         _ = behavior;
         _ = context;
-        _ = reason;
+        std.log.debug("UserGuardian preRestart: {}", .{reason});
     }
 
     fn postRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
         _ = behavior;
         _ = context;
-        _ = reason;
+        std.log.debug("UserGuardian postRestart: {}", .{reason});
     }
 
     fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {
@@ -579,13 +655,13 @@ const SystemGuardianBehavior = struct {
     fn preRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
         _ = behavior;
         _ = context;
-        _ = reason;
+        std.log.debug("SystemGuardian preRestart: {}", .{reason});
     }
 
     fn postRestart(behavior: *ActorBehavior, context: *ActorContext, reason: anyerror) !void {
         _ = behavior;
         _ = context;
-        _ = reason;
+        std.log.debug("SystemGuardian postRestart: {}", .{reason});
     }
 
     fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {

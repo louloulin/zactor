@@ -350,7 +350,7 @@ pub const Actor = struct {
         }
 
         // 发送到邮箱
-        self.mailbox.send(message) catch {
+        self.mailbox.send(message.*) catch {
             self.stats.recordFailure();
             return ActorError.MessageDeliveryFailed;
         };

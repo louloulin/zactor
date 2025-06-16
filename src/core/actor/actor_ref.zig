@@ -56,9 +56,18 @@ pub const ActorRef = struct {
     }
 
     // 便捷方法：发送用户消息
-    pub fn send(self: *Self, comptime T: type, data: T, allocator: Allocator) !void {
-        const message = try Message.createUser(allocator, data);
-        try self.tell(message, null);
+    pub fn send(self: *const Self, comptime T: type, data: T, allocator: Allocator) !void {
+        _ = allocator;
+        // 将数据转换为字符串
+        const data_str = switch (T) {
+            []const u8 => data,
+            else => @panic("Unsupported data type for send"),
+        };
+
+        var message = Message.createUser(.custom, data_str);
+        // 需要创建一个可变的self副本来调用tell
+        var mutable_self = self.*;
+        try mutable_self.tell(&message, null);
     }
 
     // 便捷方法：发送系统消息

@@ -26,6 +26,7 @@ pub const ActorError = error{
     SupervisionFailed,
     InvalidBehavior,
     ResourceExhausted,
+    TimeoutError,
 };
 
 // Actor状态枚举

@@ -121,6 +121,14 @@ pub const Metrics = struct {
         self.system_stats.print();
         self.utils_stats.print();
     }
+
+    pub fn getMessagesReceived(self: *const Metrics) u64 {
+        return self.system_stats.messages_processed.load(.monotonic);
+    }
+
+    pub fn getMessagesSent(self: *const Metrics) u64 {
+        return self.system_stats.messages_sent.load(.monotonic);
+    }
 };
 
 // Global metrics instance
