@@ -235,7 +235,7 @@ pub const EventScheduler = struct {
         _ = self;
 
         var messages_processed: u32 = 0;
-        const max_messages_per_run = 1000; // Dramatically increased batch size
+        const max_messages_per_run = 10000; // Ultra high batch size for maximum performance
 
         // Process messages until mailbox is empty or limit reached
         while (messages_processed < max_messages_per_run) {

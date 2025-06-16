@@ -37,16 +37,14 @@ pub const ActorRef = struct {
             return zactor.ActorError.ActorNotFound;
         }
 
-        // Check if mailbox is empty BEFORE sending message
         // Create and send message
         const message = try Message.createUser(T, data, null, allocator);
         try self.mailbox.send(message);
 
-        // Always reschedule if actor is running to ensure message processing
+        // Always reschedule if actor is running for maximum responsiveness
         if (current_state == .running and self.actor_ptr != null) {
             const Actor = @import("actor.zig").Actor;
             const actor: *Actor = @ptrCast(@alignCast(self.actor_ptr.?));
-            // Schedule actor for every message to ensure continuous processing
             self.system_ref.scheduler.schedule(actor) catch {};
         }
 

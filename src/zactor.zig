@@ -1,3 +1,19 @@
+//! ZActor - High-Performance Actor System for Zig
+//! 高性能Zig Actor系统
+//!
+//! ZActor provides a robust, high-performance actor model implementation
+//! designed for concurrent and distributed systems.
+//!
+//! Features:
+//! - Lock-free message passing
+//! - Work-stealing scheduler
+//! - Supervision hierarchies
+//! - Location transparency
+//! - Fault tolerance
+//! - High throughput and low latency
+//! - Modular architecture
+//! - Dynamic mailbox configuration
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
@@ -5,7 +21,17 @@ const Thread = std.Thread;
 const Mutex = std.Thread.Mutex;
 const Condition = std.Thread.Condition;
 
-// Re-export main components
+// Core module exports
+pub const core = struct {
+    pub usingnamespace @import("core/mod.zig");
+};
+
+// Utility module exports
+pub const utils = struct {
+    pub usingnamespace @import("utils/mod.zig");
+};
+
+// Re-export main components for backward compatibility
 pub const Actor = @import("actor.zig").Actor;
 pub const ActorContext = @import("actor.zig").ActorContext;
 pub const ActorSystem = @import("actor_system.zig").ActorSystem;

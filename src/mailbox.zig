@@ -7,7 +7,7 @@ const Message = @import("message.zig").Message;
 // High-performance mailbox using ring buffer and atomic operations
 pub const Mailbox = struct {
     const Self = @This();
-    const CAPACITY = 4096; // Fixed size ring buffer for better performance
+    const CAPACITY = 32768; // Ring buffer capacity (must be power of 2) - increased for high throughput
 
     messages: [CAPACITY]Message,
     head: std.atomic.Value(u32), // Read position
