@@ -156,6 +156,24 @@ pub fn build(b: *std.Build) void {
     });
     ultra_performance_benchmark.root_module.addImport("zactor", zactor_module);
 
+    // 简单Actor基准测试
+    const simple_actor_benchmark = b.addExecutable(.{
+        .name = "simple_actor_benchmark",
+        .root_source_file = b.path("examples/simple_actor_benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_actor_benchmark.root_module.addImport("zactor", zactor_module);
+
+    // Actor系统诊断工具
+    const actor_system_diagnosis = b.addExecutable(.{
+        .name = "actor_system_diagnosis",
+        .root_source_file = b.path("examples/actor_system_diagnosis.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    actor_system_diagnosis.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
@@ -166,6 +184,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(simple_ring_buffer_test);
     b.installArtifact(high_performance_benchmark);
     b.installArtifact(ultra_performance_benchmark);
+    b.installArtifact(simple_actor_benchmark);
+    b.installArtifact(actor_system_diagnosis);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -177,6 +197,8 @@ pub fn build(b: *std.Build) void {
     const run_simple_ring_buffer_test = b.addRunArtifact(simple_ring_buffer_test);
     const run_high_performance_benchmark = b.addRunArtifact(high_performance_benchmark);
     const run_ultra_performance_benchmark = b.addRunArtifact(ultra_performance_benchmark);
+    const run_simple_actor_benchmark = b.addRunArtifact(simple_actor_benchmark);
+    const run_actor_system_diagnosis = b.addRunArtifact(actor_system_diagnosis);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -204,6 +226,12 @@ pub fn build(b: *std.Build) void {
 
     const ultra_performance_benchmark_step = b.step("ultra-perf-benchmark", "Run ultra performance benchmark");
     ultra_performance_benchmark_step.dependOn(&run_ultra_performance_benchmark.step);
+
+    const simple_actor_benchmark_step = b.step("simple-actor-benchmark", "Run simple actor benchmark");
+    simple_actor_benchmark_step.dependOn(&run_simple_actor_benchmark.step);
+
+    const actor_diagnosis_step = b.step("actor-diagnosis", "Run actor system diagnosis");
+    actor_diagnosis_step.dependOn(&run_actor_system_diagnosis.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{

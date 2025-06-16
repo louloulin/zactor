@@ -8,9 +8,9 @@ const Allocator = std.mem.Allocator;
 pub const Actor = @import("actor.zig").Actor;
 pub const ActorRef = @import("actor_ref.zig").ActorRef;
 pub const ActorContext = @import("actor.zig").ActorContext;
+pub const ActorBehavior = @import("actor.zig").ActorBehavior;
 pub const ActorSystem = @import("actor_system.zig").ActorSystem;
-// TODO: 待实现的模块
-// pub const ActorBehavior = @import("behavior.zig").ActorBehavior;
+pub const ActorProps = @import("actor_system.zig").ActorProps;
 pub const ActorState = @import("state.zig").ActorState;
 // pub const ActorLifecycle = @import("lifecycle.zig").ActorLifecycle;
 

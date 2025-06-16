@@ -34,7 +34,9 @@ pub const utils = struct {
 // Re-export main components for backward compatibility
 pub const Actor = core.actor.Actor;
 pub const ActorContext = core.actor.ActorContext;
+pub const ActorBehavior = core.actor.ActorBehavior;
 pub const ActorSystem = core.actor.ActorSystem;
+pub const ActorProps = core.actor.ActorProps;
 pub const Message = core.message.Message;
 pub const SystemMessage = core.message.SystemMessage;
 pub const ControlMessage = core.message.ControlMessage;
