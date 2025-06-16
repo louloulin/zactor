@@ -13,6 +13,8 @@ const ActorError = @import("mod.zig").ActorError;
 const ActorStatus = @import("mod.zig").ActorStatus;
 const ActorConfig = @import("mod.zig").ActorConfig;
 const ActorStats = @import("mod.zig").ActorStats;
+const Task = @import("../scheduler/mod.zig").Task;
+const TaskPriority = @import("../scheduler/mod.zig").TaskPriority;
 
 // Actor上下文
 pub const ActorContext = struct {
@@ -241,6 +243,11 @@ pub const Actor = struct {
 
     pub fn deinit(self: *Self) void {
         self.stop();
+
+        // 释放邮箱
+        self.mailbox.destroy(self.allocator);
+
+        // 释放Actor本身
         self.allocator.destroy(self);
     }
 
@@ -396,6 +403,63 @@ pub const Actor = struct {
         self.context.message = null;
         self.context.sender = null;
     }
+
+    /// 创建消息处理任务
+    pub fn createMessageProcessingTask(self: *Self, allocator: Allocator) !*Task {
+        const task_impl = try allocator.create(MessageProcessingTask);
+        task_impl.* = MessageProcessingTask{
+            .task = Task.init(&MessageProcessingTask.vtable, .normal),
+            .actor = self,
+            .allocator = allocator,
+        };
+        return &task_impl.task;
+    }
+
+    /// 消息处理任务实现
+    const MessageProcessingTask = struct {
+        const TaskSelf = @This();
+
+        task: Task,
+        actor: *Actor,
+        allocator: Allocator,
+
+        const vtable = Task.VTable{
+            .execute = execute,
+            .deinit = deinitTask,
+            .getName = getName,
+        };
+
+        fn execute(task: *Task) !void {
+            const self = @as(*TaskSelf, @fieldParentPtr("task", task));
+
+            // 处理一批消息（避免单个任务处理时间过长）
+            var processed: u32 = 0;
+            const max_batch_size = 10;
+
+            while (processed < max_batch_size and self.actor.isRunning()) {
+                if (self.actor.mailbox.receive()) |message| {
+                    var msg = message;
+                    self.actor.processMessage(&msg) catch |err| {
+                        std.log.warn("Actor {} message processing failed: {}", .{ self.actor.id, err });
+                    };
+                    processed += 1;
+                } else {
+                    // 没有更多消息，退出
+                    break;
+                }
+            }
+        }
+
+        fn deinitTask(task: *Task) void {
+            const self = @as(*TaskSelf, @fieldParentPtr("task", task));
+            self.allocator.destroy(self);
+        }
+
+        fn getName(task: *Task) []const u8 {
+            _ = task;
+            return "ActorMessageProcessing";
+        }
+    };
 
     pub fn getStatus(self: *const Self) ActorStatus {
         return self.status.load(.acquire);

@@ -40,7 +40,9 @@ pub const HighPerfMailbox = struct {
         .isEmpty = isEmpty,
         .size = size,
         .capacity = getCapacity,
+        .clear = clearVTable,
         .deinit = deinit,
+        .destroy = destroy,
         .getStats = getStats,
     };
 
@@ -95,9 +97,20 @@ pub const HighPerfMailbox = struct {
         return self.capacity;
     }
 
+    fn clearVTable(ptr: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        _ = self.clear();
+    }
+
     fn deinit(ptr: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         self.deinitImpl();
+    }
+
+    fn destroy(ptr: *anyopaque, allocator: Allocator) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.deinitImpl();
+        allocator.destroy(self);
     }
 
     fn getStats(ptr: *anyopaque) ?*MailboxStats {

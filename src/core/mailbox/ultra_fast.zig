@@ -50,6 +50,7 @@ pub const UltraFastMailbox = struct {
         .size = size,
         .capacity = getCapacity,
         .deinit = deinit,
+        .destroy = destroy,
         .getStats = getStats,
     };
 
@@ -116,6 +117,12 @@ pub const UltraFastMailbox = struct {
     fn deinit(ptr: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         self.deinitImpl();
+    }
+
+    fn destroy(ptr: *anyopaque, allocator: Allocator) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.deinitImpl();
+        allocator.destroy(self);
     }
 
     fn getStats(ptr: *anyopaque) ?*MailboxStats {

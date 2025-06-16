@@ -99,6 +99,10 @@ pub const ActorRef = struct {
     pub fn deinit(self: *Self) void {
         self.path.deinit();
     }
+
+    pub fn getId(self: *const Self) []const u8 {
+        return self.path.toString();
+    }
 };
 
 // 本地ActorRef实现

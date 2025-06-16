@@ -205,7 +205,25 @@ pub const ActorSystem = struct {
         // 简化的spawn实现 - 创建一个基本的Actor
         const props = ActorProps.create(GuardianBehavior.create);
         const actor_ref_ptr = try self.actorOf(props, null);
+
+        // 为Actor创建并提交消息处理任务
+        try self.scheduleActorMessageProcessing(actor_ref_ptr);
+
         return actor_ref_ptr.*;
+    }
+
+    /// 为Actor调度消息处理任务
+    fn scheduleActorMessageProcessing(self: *Self, actor_ref: *ActorRef) !void {
+        // 这里需要从ActorRef获取底层的Actor
+        // 由于当前的ActorRef设计，我们暂时跳过这个实现
+        // 在实际应用中，需要重新设计ActorRef以便访问底层Actor
+        _ = self;
+        _ = actor_ref;
+
+        // TODO: 实现Actor消息处理任务的调度
+        // const actor = actor_ref.getActor(); // 需要添加这个方法
+        // const task = try actor.createMessageProcessingTask(self.allocator);
+        // try self.scheduler.submit(task.*);
     }
 
     pub fn createActorAt(self: *Self, props: ActorProps, parent_path: []const u8, name: ?[]const u8) !*ActorRef {
@@ -267,6 +285,9 @@ pub const ActorSystem = struct {
         // 创建Actor行为
         const behavior = try props.behavior_factory(&actor.context);
         actor.setBehavior(behavior);
+
+        // 启动Actor
+        try actor.start();
 
         return actor;
     }

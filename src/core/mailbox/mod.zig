@@ -79,7 +79,9 @@ pub const MailboxInterface = struct {
         isEmpty: *const fn (ptr: *anyopaque) bool,
         size: *const fn (ptr: *anyopaque) u32,
         capacity: *const fn (ptr: *anyopaque) u32,
+        clear: *const fn (ptr: *anyopaque) void,
         deinit: *const fn (ptr: *anyopaque) void,
+        destroy: *const fn (ptr: *anyopaque, allocator: Allocator) void,
         getStats: *const fn (ptr: *anyopaque) ?*MailboxStats,
     };
 
@@ -103,8 +105,16 @@ pub const MailboxInterface = struct {
         return self.vtable.capacity(self.ptr);
     }
 
+    pub fn clear(self: Self) void {
+        self.vtable.clear(self.ptr);
+    }
+
     pub fn deinit(self: Self) void {
         self.vtable.deinit(self.ptr);
+    }
+
+    pub fn destroy(self: Self, allocator: Allocator) void {
+        self.vtable.destroy(self.ptr, allocator);
     }
 
     pub fn getStats(self: Self) ?*MailboxStats {

@@ -28,7 +28,9 @@ pub const StandardMailbox = struct {
         .isEmpty = isEmpty,
         .size = size,
         .capacity = getCapacity,
+        .clear = clear,
         .deinit = deinit,
+        .destroy = destroy,
         .getStats = getStats,
     };
 
@@ -82,9 +84,20 @@ pub const StandardMailbox = struct {
         return self.capacity;
     }
 
+    fn clear(ptr: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.clearImpl();
+    }
+
     fn deinit(ptr: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         self.deinitImpl();
+    }
+
+    fn destroy(ptr: *anyopaque, allocator: Allocator) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.deinitImpl();
+        allocator.destroy(self);
     }
 
     fn getStats(ptr: *anyopaque) ?*MailboxStats {
@@ -158,6 +171,13 @@ pub const StandardMailbox = struct {
             return tail - head;
         } else {
             return self.capacity - head + tail;
+        }
+    }
+
+    pub fn clearImpl(self: *Self) void {
+        // 清理所有消息但不释放数组
+        while (self.receiveMessage()) |message| {
+            message.deinit(self.allocator);
         }
     }
 
