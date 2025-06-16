@@ -129,6 +129,7 @@ pub const MailboxFactory = struct {
             .standard => {
                 const mailbox = try allocator.create(StandardMailbox);
                 mailbox.* = try StandardMailbox.init(allocator, config);
+
                 return MailboxInterface{
                     .vtable = &StandardMailbox.vtable,
                     .ptr = mailbox,

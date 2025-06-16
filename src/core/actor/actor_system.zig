@@ -38,6 +38,7 @@ const SchedulerConfig = @import("../scheduler/mod.zig").SchedulerConfig;
 const MailboxConfig = @import("../mailbox/mod.zig").MailboxConfig;
 const MailboxFactory = @import("../mailbox/mod.zig").MailboxFactory;
 const MailboxInterface = @import("../mailbox/mod.zig").MailboxInterface;
+const StandardMailbox = @import("../mailbox/standard.zig").StandardMailbox;
 const ActorPath = @import("mod.zig").ActorPath;
 const ActorSelection = @import("mod.zig").ActorSelection;
 const ActorError = @import("mod.zig").ActorError;
@@ -215,7 +216,7 @@ pub const ActorSystem = struct {
         return self.createActorAt(props, "/user", name);
     }
 
-    pub fn spawn(self: *Self, comptime ActorType: type, init_data: anytype) !ActorRef {
+    pub fn spawn(self: *Self, comptime ActorType: type, init_data: anytype) !*ActorRef {
         _ = ActorType;
         _ = init_data;
         // 简化的spawn实现 - 创建一个基本的Actor
@@ -225,7 +226,7 @@ pub const ActorSystem = struct {
         // 为Actor创建并提交消息处理任务
         try self.scheduleActorMessageProcessing(actor_ref_ptr);
 
-        return actor_ref_ptr.*;
+        return actor_ref_ptr;
     }
 
     /// 为Actor调度消息处理任务
@@ -287,16 +288,19 @@ pub const ActorSystem = struct {
         _ = path;
         _ = parent;
 
-        // 创建邮箱
-        const mailbox_config = MailboxConfig.default();
-        const mailbox = try MailboxFactory.create(mailbox_config, self.allocator);
+        // 直接创建StandardMailbox，避免MailboxInterface的复制问题
+        const mailbox = try self.allocator.create(StandardMailbox);
+        mailbox.* = try StandardMailbox.init(self.allocator, MailboxConfig.default());
 
-        // 分配邮箱指针
-        const mailbox_ptr = try self.allocator.create(MailboxInterface);
-        mailbox_ptr.* = mailbox;
+        // 创建MailboxInterface包装器
+        const mailbox_interface = try self.allocator.create(MailboxInterface);
+        mailbox_interface.* = MailboxInterface{
+            .vtable = &StandardMailbox.vtable,
+            .ptr = mailbox,
+        };
 
         // 创建Actor实例
-        const actor = try Actor.init(self.allocator, props.config, mailbox_ptr);
+        const actor = try Actor.init(self.allocator, props.config, mailbox_interface);
 
         // 创建Actor行为
         const behavior = try props.behavior_factory(&actor.context);

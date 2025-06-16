@@ -56,7 +56,7 @@ pub const ActorRef = struct {
     }
 
     // 便捷方法：发送用户消息
-    pub fn send(self: *const Self, comptime T: type, data: T, allocator: Allocator) !void {
+    pub fn send(self: *Self, comptime T: type, data: T, allocator: Allocator) !void {
         _ = allocator;
         // 将数据转换为字符串
         const data_str = switch (T) {
@@ -65,15 +65,13 @@ pub const ActorRef = struct {
         };
 
         var message = Message.createUser(.custom, data_str);
-        // 需要创建一个可变的self副本来调用tell
-        var mutable_self = self.*;
-        try mutable_self.tell(&message, null);
+        try self.tell(&message, null);
     }
 
     // 便捷方法：发送系统消息
     pub fn sendSystem(self: *Self, system_msg: SystemMessage) !void {
-        const message = try Message.createSystem(self.allocator, system_msg);
-        try self.tell(message, null);
+        var message = Message.createSystem(system_msg, null);
+        try self.tell(&message, null);
     }
 
     pub fn forward(self: *Self, message: *Message, sender: *ActorRef) !void {
@@ -101,9 +99,13 @@ pub const ActorRef = struct {
     }
 
     pub fn getId(self: *const Self) []const u8 {
-        // 返回路径的字符串表示，这里简化为直接返回路径
+        // 返回路径的字符串表示，这里简化为返回最后一个段
         // 在实际使用中可能需要分配内存
-        return self.path.path;
+        if (self.path.segments.len > 0) {
+            return self.path.segments[self.path.segments.len - 1];
+        } else {
+            return "unknown";
+        }
     }
 
     /// 获取底层Actor（仅适用于本地ActorRef）

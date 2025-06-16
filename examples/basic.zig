@@ -83,7 +83,7 @@ pub fn main() !void {
     std.log.info("=== ZActor Basic Example ===", .{});
 
     // Create actor system
-    var system = try zactor.ActorSystem.init("basic-example", allocator);
+    var system = try zactor.ActorSystem.init("basic-example", zactor.Config.default(), allocator);
     defer system.deinit();
 
     // Start the system
@@ -97,7 +97,7 @@ pub fn main() !void {
     const counter1 = try system.spawn(CounterActor, CounterActor.init("Counter-1"));
     const counter2 = try system.spawn(CounterActor, CounterActor.init("Counter-2"));
 
-    std.log.info("Spawned actors: {} and {}", .{ counter1.getId(), counter2.getId() });
+    std.log.info("Spawned actors: {s} and {s}", .{ counter1.getId(), counter2.getId() });
 
     // Send some messages
     try counter1.send([]const u8, "increment", allocator);
@@ -117,12 +117,12 @@ pub fn main() !void {
 
     // Get system statistics
     const stats = system.getStats();
-    defer stats.deinit(allocator);
     stats.print();
 
-    // Test broadcast
-    std.log.info("Broadcasting increment to all actors...", .{});
-    try system.broadcast([]const u8, "increment");
+    // Send additional messages
+    std.log.info("Sending additional increment messages...", .{});
+    try counter1.send([]const u8, "increment", allocator);
+    try counter2.send([]const u8, "increment", allocator);
 
     // Wait a bit more
     std.time.sleep(50 * std.time.ns_per_ms);
@@ -136,13 +136,12 @@ pub fn main() !void {
 
     // Final stats
     const final_stats = system.getStats();
-    defer final_stats.deinit(allocator);
     std.log.info("Final stats:", .{});
     final_stats.print();
 
     // Graceful shutdown
     std.log.info("Shutting down actor system...", .{});
-    system.shutdown();
+    try system.shutdown();
 
     std.log.info("=== Example Complete ===", .{});
 }

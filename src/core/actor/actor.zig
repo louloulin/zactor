@@ -8,7 +8,8 @@ const AtomicValue = std.atomic.Value;
 
 // 导入相关模块
 const Message = @import("../message/mod.zig").Message;
-const Mailbox = @import("../mailbox/mod.zig").MailboxInterface;
+const MailboxInterface = @import("../mailbox/mod.zig").MailboxInterface;
+const StandardMailbox = @import("../mailbox/standard.zig").StandardMailbox;
 const ActorError = @import("mod.zig").ActorError;
 const ActorStatus = @import("mod.zig").ActorStatus;
 const ActorConfig = @import("mod.zig").ActorConfig;
@@ -182,7 +183,7 @@ pub const DefaultBehavior = struct {
 
     fn supervisorStrategy(behavior: *ActorBehavior) ActorBehavior.SupervisionStrategy {
         _ = behavior;
-        return .restart;
+        return .restart_actor;
     }
 };
 
@@ -197,7 +198,7 @@ pub const Actor = struct {
     status: AtomicValue(ActorStatus),
     behavior: ?*ActorBehavior,
     context: ActorContext,
-    mailbox: *Mailbox,
+    mailbox: *MailboxInterface,
     config: ActorConfig,
     stats: ActorStats,
 
@@ -215,7 +216,7 @@ pub const Actor = struct {
     // 内存管理
     allocator: Allocator,
 
-    pub fn init(allocator: Allocator, config: ActorConfig, mailbox: *Mailbox) !*Self {
+    pub fn init(allocator: Allocator, config: ActorConfig, mailbox: *MailboxInterface) !*Self {
         const actor = try allocator.create(Self);
         const now = std.time.milliTimestamp();
 
@@ -249,8 +250,11 @@ pub const Actor = struct {
             self.allocator.destroy(behavior);
         }
 
-        // 释放邮箱
-        self.mailbox.destroy(self.allocator);
+        // 释放邮箱 - 先释放底层mailbox，再释放interface
+        const standard_mailbox: *StandardMailbox = @ptrCast(@alignCast(self.mailbox.ptr));
+        standard_mailbox.deinitImpl();
+        self.allocator.destroy(standard_mailbox);
+        self.allocator.destroy(self.mailbox);
 
         // 注意：不要在这里释放Actor本身，应该由创建者负责释放
     }
@@ -331,7 +335,7 @@ pub const Actor = struct {
         }
 
         // 清空邮箱
-        self.mailbox.clear();
+        self.mailbox.*.clear();
 
         // 重置统计信息
         self.stats.reset();
@@ -361,7 +365,7 @@ pub const Actor = struct {
         }
 
         // 发送到邮箱
-        self.mailbox.send(message.*) catch {
+        self.mailbox.*.send(message.*) catch {
             self.stats.recordFailure();
             return ActorError.MessageDeliveryFailed;
         };
@@ -370,7 +374,7 @@ pub const Actor = struct {
     }
 
     pub fn receive(self: *Self) !?*Message {
-        return self.mailbox.receive();
+        return self.mailbox.*.receive();
     }
 
     pub fn processMessage(self: *Self, message: *Message) !void {
@@ -441,7 +445,7 @@ pub const Actor = struct {
             const max_batch_size = 10;
 
             while (processed < max_batch_size and self.actor.isRunning()) {
-                if (self.actor.mailbox.receive()) |message| {
+                if (self.actor.mailbox.*.receive()) |message| {
                     var msg = message;
                     self.actor.processMessage(&msg) catch |err| {
                         std.log.warn("Actor {} message processing failed: {}", .{ self.actor.id, err });
@@ -516,7 +520,7 @@ pub const Actor = struct {
             .status = self.getStatus(),
             .uptime_ms = self.getUptime(),
             .restart_count = self.restart_count,
-            .mailbox_size = self.mailbox.size(),
+            .mailbox_size = self.mailbox.*.size(),
             .stats = self.stats,
         };
     }

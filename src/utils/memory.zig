@@ -558,7 +558,10 @@ pub const AlignedAllocator = struct {
 
     fn free(ctx: *anyopaque, buf: []u8, buf_align: std.mem.Alignment, ret_addr: usize) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        self.child_allocator.rawFree(buf, buf_align, ret_addr);
+        const alignment = @max(self.alignment, buf_align.toByteUnits());
+        const final_log2_align: u8 = @intCast(std.math.log2_int(usize, alignment));
+        const final_align: std.mem.Alignment = @enumFromInt(final_log2_align);
+        self.child_allocator.rawFree(buf, final_align, ret_addr);
     }
 };
 
