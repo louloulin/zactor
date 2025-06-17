@@ -68,8 +68,6 @@ benchmark-results/
 *.bench
 
 # Documentation build
-docs/
-doc/
 
 # Package manager files (if any)
 node_modules/
