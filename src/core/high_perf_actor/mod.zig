@@ -34,9 +34,11 @@ pub const PerformanceConfig = struct {
     message_pool_size: u32 = 10000, // 消息池大小
     actor_pool_size: u32 = 1000, // Actor池大小
 
-    // 调度配置
+    // 调度配置 - 基于Akka最佳实践
     worker_threads: u32 = 0, // 0 = auto-detect
-    queue_capacity: u32 = 65536, // 队列容量
+    worker_queue_capacity: u32 = 4096, // 工作线程本地队列 (4K)
+    global_queue_capacity: u32 = 32768, // 全局队列容量 (32K)
+    actor_mailbox_capacity: u32 = 65536, // Actor邮箱容量 (64K)
     enable_work_stealing: bool = true,
 
     // 优化开关
@@ -60,7 +62,9 @@ pub const PerformanceConfig = struct {
             .message_pool_size = 50000,
             .actor_pool_size = 5000,
             .worker_threads = @intCast(@max(1, std.Thread.getCpuCount() catch 8)),
-            .queue_capacity = 131072,
+            .worker_queue_capacity = 8192, // 8K本地队列
+            .global_queue_capacity = 65536, // 64K全局队列
+            .actor_mailbox_capacity = 131072, // 128K邮箱
             .enable_zero_copy = true,
             .enable_batching = true,
             .enable_prefetch = true,
@@ -171,10 +175,17 @@ pub fn SPSCQueue(comptime T: type, comptime capacity: u32) type {
 
         pub fn push(self: *Self, item: T) bool {
             const current_tail = self.tail.load(.monotonic);
-            const next_tail = current_tail + 1;
+            const current_head = self.head.load(.acquire);
+
+            // 安全检查：防止整数溢出
+            if (current_tail >= std.math.maxInt(u32) - 1) {
+                return false;
+            }
+
+            const next_tail = current_tail +% 1; // 使用wrapping add
 
             // 检查队列是否满
-            if (next_tail - self.head.load(.acquire) > capacity) {
+            if (next_tail -% current_head > capacity) {
                 return false;
             }
 
@@ -203,7 +214,9 @@ pub fn SPSCQueue(comptime T: type, comptime capacity: u32) type {
         }
 
         pub fn size(self: *const Self) u32 {
-            return self.tail.load(.monotonic) - self.head.load(.monotonic);
+            const tail = self.tail.load(.monotonic);
+            const head = self.head.load(.monotonic);
+            return tail -% head; // 使用wrapping sub防止溢出
         }
 
         pub fn isEmpty(self: *const Self) bool {

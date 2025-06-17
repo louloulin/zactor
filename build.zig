@@ -192,6 +192,24 @@ pub fn build(b: *std.Build) void {
     });
     high_perf_actor_test.root_module.addImport("zactor", zactor_module);
 
+    // 简化高性能Actor测试
+    const simple_high_perf_test = b.addExecutable(.{
+        .name = "simple_high_perf_test",
+        .root_source_file = b.path("examples/simple_high_perf_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_high_perf_test.root_module.addImport("zactor", zactor_module);
+
+    // ZActor压力测试
+    const zactor_stress_test = b.addExecutable(.{
+        .name = "zactor_stress_test",
+        .root_source_file = b.path("examples/zactor_stress_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    zactor_stress_test.root_module.addImport("zactor", zactor_module);
+
     // Install examples
     b.installArtifact(basic_example);
     b.installArtifact(ping_pong_example);
@@ -206,6 +224,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(actor_system_diagnosis);
     b.installArtifact(fast_startup_test);
     b.installArtifact(high_perf_actor_test);
+    b.installArtifact(simple_high_perf_test);
+    b.installArtifact(zactor_stress_test);
 
     // Run steps for examples
     const run_basic = b.addRunArtifact(basic_example);
@@ -221,6 +241,8 @@ pub fn build(b: *std.Build) void {
     const run_actor_system_diagnosis = b.addRunArtifact(actor_system_diagnosis);
     const run_fast_startup_test = b.addRunArtifact(fast_startup_test);
     const run_high_perf_actor_test = b.addRunArtifact(high_perf_actor_test);
+    const run_simple_high_perf_test = b.addRunArtifact(simple_high_perf_test);
+    const run_zactor_stress_test = b.addRunArtifact(zactor_stress_test);
 
     const basic_step = b.step("run-basic", "Run basic example");
     basic_step.dependOn(&run_basic.step);
@@ -260,6 +282,12 @@ pub fn build(b: *std.Build) void {
 
     const high_perf_step = b.step("high-perf-test", "Run high-performance actor test");
     high_perf_step.dependOn(&run_high_perf_actor_test.step);
+
+    const simple_high_perf_step = b.step("simple-high-perf-test", "Run simple high-performance actor test");
+    simple_high_perf_step.dependOn(&run_simple_high_perf_test.step);
+
+    const zactor_stress_test_step = b.step("zactor-stress-test", "Run ZActor stress test");
+    zactor_stress_test_step.dependOn(&run_zactor_stress_test.step);
 
     // Benchmarks
     const benchmark = b.addExecutable(.{

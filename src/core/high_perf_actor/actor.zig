@@ -345,8 +345,8 @@ pub const CounterBehavior = struct {
     }
 };
 
-// 类型别名
-pub const CounterActor = Actor(CounterBehavior, 1024);
+// 类型别名 - 使用64K邮箱容量
+pub const CounterActor = Actor(CounterBehavior, 65536);
 
 // 测试
 test "Actor creation and lifecycle" {

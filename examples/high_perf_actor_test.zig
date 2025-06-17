@@ -63,7 +63,24 @@ const HighPerfActorSystem = struct {
     }
 
     pub fn stop(self: *Self) !void {
+        std.log.info("Stopping high-performance actor system...", .{});
+
+        // 1. 停止所有Actor
+        for (self.actors.items) |actor| {
+            try actor.stop();
+        }
+
+        // 2. 等待Actor处理完成和循环数据清理
+        std.log.info("Waiting for actors to finish...", .{});
+        std.time.sleep(100 * std.time.ns_per_ms); // 增加等待时间
+
+        // 3. 停止调度器
+        std.log.info("Stopping scheduler...", .{});
         try self.scheduler.stop();
+
+        // 4. 再次等待确保所有工作线程完全停止
+        std.time.sleep(50 * std.time.ns_per_ms);
+
         std.log.info("High-performance actor system stopped", .{});
     }
 
@@ -76,11 +93,24 @@ const HighPerfActorSystem = struct {
 
         try self.actors.append(actor);
 
-        // 创建Actor处理任务并提交给调度器
-        const task = ActorTask.init(actor, actorProcessWrapper);
-        _ = self.scheduler.submit(task);
+        // 启动持续的消息处理循环
+        try self.startActorProcessingLoop(actor);
 
         return actor;
+    }
+
+    // 启动Actor的持续消息处理循环
+    fn startActorProcessingLoop(self: *Self, actor: *CounterActor) !void {
+        const loop_data = try self.allocator.create(ActorLoopData);
+        loop_data.* = ActorLoopData.init(actor, self, self.allocator);
+
+        // 创建并提交初始任务
+        const task = ActorTask.init(loop_data, actorLoopWrapper);
+        if (!self.scheduler.submit(task)) {
+            // 如果提交失败，立即清理
+            self.allocator.destroy(loop_data);
+            return error.SchedulerSubmitFailed;
+        }
     }
 
     pub fn sendMessage(self: *Self, actor: *CounterActor, data: []const u8) bool {
@@ -134,7 +164,92 @@ const HighPerfActorSystem = struct {
     }
 };
 
-// Actor处理包装函数
+// Actor循环数据结构 - 使用引用计数管理生命周期
+const ActorLoopData = struct {
+    actor: *CounterActor,
+    system: *HighPerfActorSystem,
+    allocator: std.mem.Allocator,
+    is_active: std.atomic.Value(bool), // 原子标志，防止重复释放
+    ref_count: std.atomic.Value(u32), // 引用计数
+
+    pub fn init(actor: *CounterActor, system: *HighPerfActorSystem, allocator: std.mem.Allocator) ActorLoopData {
+        return ActorLoopData{
+            .actor = actor,
+            .system = system,
+            .allocator = allocator,
+            .is_active = std.atomic.Value(bool).init(true),
+            .ref_count = std.atomic.Value(u32).init(1), // 初始引用计数为1
+        };
+    }
+
+    pub fn addRef(self: *ActorLoopData) void {
+        _ = self.ref_count.fetchAdd(1, .acq_rel);
+    }
+
+    pub fn release(self: *ActorLoopData) void {
+        const old_count = self.ref_count.fetchSub(1, .acq_rel);
+        if (old_count == 1) {
+            // 引用计数归零，安全释放
+            self.allocator.destroy(self);
+        }
+    }
+
+    pub fn deactivate(self: *ActorLoopData) bool {
+        // 原子性地设置为非活跃状态，返回之前的状态
+        return self.is_active.swap(false, .acq_rel);
+    }
+
+    pub fn isActive(self: *const ActorLoopData) bool {
+        return self.is_active.load(.acquire);
+    }
+};
+
+// Actor持续处理循环包装函数
+fn actorLoopWrapper(loop_data_ptr: *anyopaque) u32 {
+    const loop_data = @as(*ActorLoopData, @ptrCast(@alignCast(loop_data_ptr)));
+
+    // 在函数开始时增加引用计数，确保在执行期间数据不会被释放
+    loop_data.addRef();
+    defer loop_data.release(); // 函数结束时释放引用
+
+    // 检查循环数据是否仍然活跃
+    if (!loop_data.isActive()) {
+        // 已经被停用，直接返回
+        return 0;
+    }
+
+    // 处理消息
+    const processed = loop_data.actor.processMessages() catch 0;
+
+    // 检查是否应该继续运行
+    const should_continue = loop_data.actor.isRunning() and
+        loop_data.system.scheduler.isRunning() and
+        loop_data.isActive();
+
+    if (should_continue) {
+        // 如果没有处理任何消息，添加短暂延迟避免忙等待
+        if (processed == 0) {
+            std.time.sleep(1 * std.time.ns_per_ms); // 1ms延迟
+        }
+
+        // 为下一个任务增加引用计数
+        loop_data.addRef();
+        const next_task = ActorTask.init(loop_data, actorLoopWrapper);
+        if (!loop_data.system.scheduler.submit(next_task)) {
+            // 调度失败，释放刚才增加的引用
+            loop_data.release();
+            // 停用循环
+            _ = loop_data.deactivate();
+        }
+    } else {
+        // 停止条件满足，停用循环
+        _ = loop_data.deactivate();
+    }
+
+    return processed;
+}
+
+// 原始的Actor处理包装函数（保留用于兼容性）
 fn actorProcessWrapper(actor_ptr: *anyopaque) u32 {
     const actor = @as(*CounterActor, @ptrCast(@alignCast(actor_ptr)));
     return actor.processMessages() catch 0;

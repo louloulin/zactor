@@ -39,7 +39,7 @@ pub const ActorTask = struct {
 // 工作线程
 const Worker = struct {
     const Self = @This();
-    const TaskQueue = SPSCQueue(ActorTask, 1024);
+    const TaskQueue = SPSCQueue(ActorTask, 4096); // 使用4K容量
 
     id: u32,
     thread: ?Thread,
@@ -137,7 +137,17 @@ const Worker = struct {
         const max_batch = self.scheduler.config.batch_size;
 
         while (batch_count < max_batch) {
+            // 检查调度器状态
+            if (self.scheduler.state.load(.acquire) != .running) {
+                break;
+            }
+
             if (self.local_queue.pop()) |task| {
+                // 再次检查状态确保安全执行
+                if (self.scheduler.state.load(.acquire) != .running) {
+                    break;
+                }
+
                 const messages_processed = task.execute();
                 if (messages_processed > 0) {
                     _ = self.tasks_processed.fetchAdd(messages_processed, .monotonic);
@@ -153,7 +163,17 @@ const Worker = struct {
     }
 
     fn processGlobalTasks(self: *Self) bool {
+        // 检查调度器状态
+        if (self.scheduler.state.load(.acquire) != .running) {
+            return false;
+        }
+
         if (self.scheduler.global_queue.pop()) |task| {
+            // 再次检查状态确保安全执行
+            if (self.scheduler.state.load(.acquire) != .running) {
+                return false;
+            }
+
             const messages_processed = task.execute();
             if (messages_processed > 0) {
                 _ = self.tasks_processed.fetchAdd(messages_processed, .monotonic);
@@ -167,6 +187,11 @@ const Worker = struct {
         const worker_count = self.scheduler.workers.len;
         if (worker_count <= 1) return false;
 
+        // 检查调度器是否仍在运行
+        if (self.scheduler.state.load(.acquire) != .running) {
+            return false;
+        }
+
         // 随机选择目标工作线程
         var rng = std.Random.DefaultPrng.init(@intCast(std.time.nanoTimestamp()));
         const target_id = rng.random().intRangeAtMost(u32, 0, @intCast(worker_count - 1));
@@ -174,6 +199,11 @@ const Worker = struct {
         if (target_id == self.id) return false;
 
         if (self.scheduler.workers[target_id].steal()) |task| {
+            // 再次检查调度器状态，确保安全执行
+            if (self.scheduler.state.load(.acquire) != .running) {
+                return false;
+            }
+
             const messages_processed = task.execute();
             if (messages_processed > 0) {
                 _ = self.tasks_processed.fetchAdd(messages_processed, .monotonic);
@@ -215,7 +245,7 @@ pub const WorkerStats = struct {
 // 高性能调度器
 pub const Scheduler = struct {
     const Self = @This();
-    const GlobalQueue = SPSCQueue(ActorTask, 4096);
+    const GlobalQueue = SPSCQueue(ActorTask, 32768); // 使用32K容量
 
     // 配置
     config: PerformanceConfig,
